@@ -1,0 +1,4 @@
+glob:gb-o-tron/bin/
+glob:gb-o-tron/obj
+glob:*.suo
+glob:*~
