@@ -21,8 +21,8 @@ namespace gb_o_tron
         private uint[] obp1Pal;
 
         private int[] Flip = { 14, 10, 6, 2, -2, -6, -10, -14 };
-
-        uint alpha = 0x3F000000;
+        private int[] Shift = { 7, 6, 5, 4, 3, 2, 1, 0 };
+        uint alpha = 0xFF000000;
         
 
         public LCD(GBCore gb)
@@ -229,6 +229,27 @@ namespace gb_o_tron
                         }
                     }
                 }
+                if (gb.rom.SGB)
+                    ApplySGB();
+            }
+        }
+        private void ApplySGB()
+        {
+            for (int x = 0; x < 160; x++)
+            {
+                if (gb.sgb.pendingAttrCopy == 3 || gb.sgb.pendingPalCopy == 3)
+                {
+                    int tileNumber = ((scanline / 8) * 20) + (x / 8);
+                    int xOff = (x % 8);
+                    int yOff = (scanline % 8);
+                    int tileAddr = tileNumber * 16;
+                    tileAddr += yOff * 2;
+                    uint high = (screen[scanline, x] >> 1) & 1;
+                    uint low = screen[scanline, x] & 1;
+                    gb.sgb.screenData[tileAddr] |= (byte)(low << Shift[xOff]);
+                    gb.sgb.screenData[tileAddr + 1] |= (byte)(high << Shift[xOff]);
+                }
+                screen[scanline, x] = gb.sgb.sgbPalettes[gb.sgb.attrTable[scanline / 8, x / 8]][(screen[scanline, x] & 3)] | alpha;
             }
         }
         private uint[] CGBWindColor(int index)
@@ -244,8 +265,16 @@ namespace gb_o_tron
             }
             else
             {
-                for (int i = 0; i < 4; i++)
-                    colors[i] = windPal[gb.BGP[i]];
+                if (gb.rom.SGB)
+                {
+                    for (int i = 0; i < 4; i++)
+                        colors[i] = (byte)(gb.BGP[i] & 0x3);
+                }
+                else
+                {
+                    for (int i = 0; i < 4; i++)
+                        colors[i] = windPal[gb.BGP[i]];
+                }
             }
             return colors;
         }
@@ -262,8 +291,16 @@ namespace gb_o_tron
             }
             else
             {
-                for (int i = 0; i < 4; i++)
-                    colors[i] = bgPal[gb.BGP[i]];
+                if (gb.rom.SGB)
+                {
+                    for (int i = 0; i < 4; i++)
+                        colors[i] = (byte)(gb.BGP[i] & 0x3);
+                }
+                else
+                {
+                    for (int i = 0; i < 4; i++)
+                        colors[i] = bgPal[gb.BGP[i]];
+                }
             }
             return colors;
         }
@@ -282,13 +319,29 @@ namespace gb_o_tron
             {
                 if (index == 0)
                 {
-                    for (int i = 0; i < 4; i++)
-                        colors[i] = obp0Pal[gb.OBP0[i]];
+                    if (gb.rom.SGB)
+                    {
+                        for (int i = 0; i < 4; i++)
+                            colors[i] = (byte)(gb.OBP0[i] & 0x3);
+                    }
+                    else
+                    {
+                        for (int i = 0; i < 4; i++)
+                            colors[i] = obp0Pal[gb.OBP0[i]];
+                    }
                 }
                 else
                 {
-                    for (int i = 0; i < 4; i++)
-                        colors[i] = obp1Pal[gb.OBP1[i]];
+                    if (gb.rom.SGB)
+                    {
+                        for (int i = 0; i < 4; i++)
+                            colors[i] = (byte)(gb.OBP1[i] & 0x3);
+                    }
+                    else
+                    {
+                        for (int i = 0; i < 4; i++)
+                            colors[i] = obp1Pal[gb.OBP1[i]];
+                    }
                 }
             }
             return colors;
@@ -329,6 +382,8 @@ namespace gb_o_tron
                     gb.InterSTATVBlank = false;
                     gb.InterSTATOAM = true;
                     scanline = 0;
+                    if (gb.rom.SGB)
+                        gb.sgb.Frame();
                 }
                 else if(mode != 1)
                 {

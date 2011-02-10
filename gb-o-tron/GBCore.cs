@@ -205,6 +205,7 @@ namespace gb_o_tron
         public MemoryStore memory;
         public mappers.Mapper mapper;
         public LCD lcd;
+        public SGB sgb;
 
         byte serialByte;
         public string serialData;
@@ -228,17 +229,17 @@ namespace gb_o_tron
         public int[] OBP1 = new int[4];
 
         public byte[] oamRam = new byte[0xA0];
-        public byte[] hRam = new byte[0x7F];
+        public byte[] hRam = new byte[0x100];
 
         public byte LCDC;
 
         public byte[] cgbBGP = new byte[0x40];
         public byte[] cgbOBP = new byte[0x40];
 
-        int cgbBGPIndex;
+        public int cgbBGPIndex;
         bool cgbBGPAuto;
 
-        int cgbOBPIndex;
+        public int cgbOBPIndex;
         bool cgbOBPAuto;
 
         int wramBank;
@@ -254,6 +255,10 @@ namespace gb_o_tron
 
         bool forceClassicGB = false;
 
+        byte[][] bios = new byte[3][];
+        byte[][] bootBanks = new byte[3][];
+        bool booted = false;
+
         public GBCore(Stream image)
         {
             image.Position = 0x134;
@@ -266,7 +271,7 @@ namespace gb_o_tron
             }
             rom.cgbMode = (image.ReadByte() & 0x80) != 0 && !forceClassicGB;
             rom.newLicense = ((char)image.ReadByte()).ToString() + ((char)image.ReadByte()).ToString();
-            rom.SGB = image.ReadByte() == 0x03;
+            rom.SGB = image.ReadByte() == 0x03 && !forceClassicGB;
             rom.cartType = (byte)image.ReadByte();
             int romSize = image.ReadByte();
             switch(romSize)
@@ -306,6 +311,7 @@ namespace gb_o_tron
             }
             rom.dst = (byte)image.ReadByte();
             rom.oldLicense = (byte)image.ReadByte();
+            rom.SGB = (rom.SGB && rom.oldLicense == 0x33);
             rom.maskRomVer = (byte)image.ReadByte();
             rom.headerChecksum = (byte)image.ReadByte();
             rom.glocalChecksum = (ushort)(image.ReadByte() | (image.ReadByte() << 8));
@@ -374,14 +380,13 @@ namespace gb_o_tron
                     
             }
             lcd = new LCD(this);
+            if (rom.SGB)
+                sgb = new SGB(this);
             if (rom.cgbMode)
                 LoadBios();
             else
                 Power();
         }
-        byte[][] bios = new byte[3][];
-        byte[][] bootBanks = new byte[3][];
-        bool booted = false;
         public void LoadBios()
         {
             mapper.Power();
@@ -406,6 +411,10 @@ namespace gb_o_tron
         }
         public void Boot()
         {
+            for (int i = 0x00; i < memory.wramSwapOffset * 0x400; i++)
+            {
+                memory.banks[(i / 0x400)][i % 0x400] = 0; //pokemon yellow work around
+            }
             memory.banks[memory.swapOffset] = bootBanks[0];
             memory.banks[memory.swapOffset + 1] = bootBanks[1];
             memory.banks[memory.swapOffset + 2] = bootBanks[2];
@@ -1881,17 +1890,18 @@ namespace gb_o_tron
                             nextByte |= 0x10;
                         if (!selectButtons)
                             nextByte |= 0x20;
-                        break;
-                    case 0xFF01://SB - Serial transfer data (R/W)
-                        nextByte = serialByte;
+                        if (rom.SGB)
+                        {
+                            if (sgb.Read() != 0xF) //Only support 1 player so far
+                                nextByte |= 0x0F;
+                            if (!selectButtons && !selectDirections)
+                                nextByte = (byte)((nextByte & 0xF0) | ((byte)sgb.Read()));
+                        }
                         break;
                     case 0xFF02://SC - Serial Transfer Control (R/W)
                         break;
                     case 0xFF04://DIV - Divider Register (R/W)
                         nextByte = divider;
-                        break;
-                    case 0xFF05://TIMA - Timer counter (R/W)
-                        nextByte = timer;
                         break;
                     case 0xFF06://TMA - Timer Modulo (R/W)
                         nextByte = timerReload;
@@ -1911,9 +1921,6 @@ namespace gb_o_tron
                         if (InterJoypad)
                             nextByte |= 0x10;
                         break;
-                    case 0xFF40://LCDC - LCD Control (R/W)
-                        nextByte = LCDC;
-                        break;
                     case 0xFF41://STAT - LCDC Status (R/W)
                         nextByte |= lcd.mode;
                         nextByte |= (byte)((LYC == LY) ? 0x4 : 0);
@@ -1922,47 +1929,8 @@ namespace gb_o_tron
                         nextByte |= (byte)(InterSTATOAMEnabled ? 0x20 : 0);
                         nextByte |= (byte)(InterSTATCoincidenceEnabled ? 0x40 : 0);
                         break;
-                    case 0xFF42://SCY - Scroll Y (R/W)
-                        nextByte = SCY;
-                        break;
-                    case 0xFF43://SCX - Scroll X (R/W)
-                        nextByte = SCX;
-                        break;
                     case 0xFF44://LY - LCDC Y-Coordinate (R)
                         nextByte = LY;
-                        break;
-                    case 0xFF45://LYC - LY Compare (R/W)
-                        nextByte = LYC;
-                        break;
-                    case 0xFF47://BGP - BG Palette Data (R/W)
-                        for (int i = 3; i >= 0; i--)
-                        {
-
-                            nextByte |= (byte)BGP[i];
-                            nextByte <<= 2;
-                        }
-                        break;
-                    case 0xFF48://OBP0 - Object Palette 0 Data (R/W)
-                        for (int i = 3; i >= 0; i--)
-                        {
-
-                            nextByte |= (byte)OBP0[i];
-                            nextByte <<= 2;
-                        }
-                        break;
-                    case 0xFF49://OBP1 - Object Palette 1 Data (R/W)
-                        for (int i = 3; i >= 0; i--)
-                        {
-
-                            nextByte |= (byte)OBP1[i];
-                            nextByte <<= 2;
-                        }
-                        break;
-                    case 0xFF4A://WY - Window Y Position (R/W)
-                        nextByte = WY;
-                        break;
-                    case 0xFF4B://WX - Window X Position (R/W)
-                        nextByte = WX;
                         break;
                     case 0xFF4D://KEY1 - CGB Mode Only - Prepare Speed Switch
                         if (rom.cgbMode)
@@ -2006,6 +1974,7 @@ namespace gb_o_tron
                         {
                             nextByte = (byte)(cgbBGPIndex & 0x3F);
                             nextByte |= (byte)(cgbBGPAuto ? 0x80 : 0x00);
+                            nextByte |= 0x40;
                         }
                         break;
                     case 0xFF69://BCPD/BGPD - CGB Mode Only - Background Palette Data
@@ -2019,6 +1988,7 @@ namespace gb_o_tron
                         {
                             nextByte = (byte)(cgbOBPIndex & 0x3F);
                             nextByte |= (byte)(cgbOBPAuto ? 0x80 : 0x00);
+                            nextByte |= 0x40;
                         }
                         break;
                     case 0xFF6B://OCPD/OBPD - CGB Mode Only - Sprite Palette Data
@@ -2046,8 +2016,7 @@ namespace gb_o_tron
                             nextByte |= 0x10;
                         break;
                     default://HRAM
-                        if (address >= 0xFF80)
-                            nextByte = hRam[address & 0x7F];
+                            nextByte = hRam[address & 0xFF];
                         break;
                 }
             }
@@ -2085,6 +2054,8 @@ namespace gb_o_tron
                     case 0xFF00://P1/JOYP - Joypad (R/W)
                         selectButtons = (value & 0x20) == 0;
                         selectDirections = (value & 0x10) == 0;
+                        if (rom.SGB)
+                            sgb.Write(value);
                         break;
                     case 0xFF01://SB - Serial transfer data (R/W)
                         serialByte = (byte)(value & 0xFF);
@@ -2156,25 +2127,22 @@ namespace gb_o_tron
                         }
                         break;
                     case 0xFF47://BGP - BG Palette Data (R/W)
-                        for (int i = 0; i < 4; i++)
-                        {
-                            BGP[i] = value & 3;
-                            value >>= 2;
-                        }
+                        BGP[0] = value & 3;
+                        BGP[1] = (value >> 2) & 3;
+                        BGP[2] = (value >> 4) & 3;
+                        BGP[3] = (value >> 6) & 3;
                         break;
                     case 0xFF48://OBP0 - Object Palette 0 Data (R/W)
-                        for (int i = 0; i < 4; i++)
-                        {
-                            OBP0[i] = value & 3;
-                            value >>= 2;
-                        }
+                        OBP0[0] = value & 3;
+                        OBP0[1] = (value >> 2) & 3;
+                        OBP0[2] = (value >> 4) & 3;
+                        OBP0[3] = (value >> 6) & 3;
                         break;
                     case 0xFF49://OBP1 - Object Palette 1 Data (R/W)
-                        for (int i = 0; i < 4; i++)
-                        {
-                            OBP1[i] = value & 3;
-                            value >>= 2;
-                        }
+                        OBP1[0] = value & 3;
+                        OBP1[1] = (value >> 2) & 3;
+                        OBP1[2] = (value >> 4) & 3;
+                        OBP1[3] = (value >> 6) & 3;
                         break;
                     case 0xFF4A://WY - Window Y Position (R/W)
                         WY = (byte)(value & 0xFF);
@@ -2248,7 +2216,7 @@ namespace gb_o_tron
                     case 0xFF6B://OCPD/OBPD - CGB Mode Only - Sprite Palette Data
                         if (rom.cgbMode)
                         {
-                            cgbOBP[cgbOBPIndex] = (byte)(value & 0xFF);
+                            cgbOBP[cgbOBPIndex ] = (byte)(value & 0xFF);
                             if (cgbOBPAuto)
                                 cgbOBPIndex = (cgbOBPIndex + 1) & 0x3F;
                         }
@@ -2267,11 +2235,8 @@ namespace gb_o_tron
                         InterSerialEnabled = (value & 8) != 0;
                         InterJoypadEnabled = (value & 0x10) != 0;
                         break;
-                    default://HRAM
-                        if (address >= 0xFF80)
-                            hRam[address & 0x7F] = (byte)(value & 0xFF);
-                        break;
                 }
+                hRam[address & 0xFF] = (byte)(value & 0xFF);
             }
             else if (address < 0xE000)
             {
