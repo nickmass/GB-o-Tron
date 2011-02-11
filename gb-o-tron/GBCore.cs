@@ -381,7 +381,10 @@ namespace gb_o_tron
             }
             lcd = new LCD(this);
             if (rom.SGB)
+            {
                 sgb = new SGB(this);
+                rom.cgbMode = false;
+            }
             if (rom.cgbMode)
                 LoadBios();
             else

@@ -17,7 +17,7 @@ namespace gb_o_tron
         bool closing;
         GBCore gb;
         Thread game;
-        Bitmap screen = new Bitmap(320,288);
+        Bitmap screen = new Bitmap(512, 448);
         Graphics screenGfx;
         int frames;
         int lastFrameRate;
@@ -27,6 +27,8 @@ namespace gb_o_tron
         int sleep;
         Input player;
         DateTime start;
+        string appPath = Path.GetDirectoryName(Application.ExecutablePath);
+
         public Form1()
         {
             InitializeComponent();
@@ -47,16 +49,19 @@ namespace gb_o_tron
                 frameRater++;
                 this.Text = lastFrameRate.ToString();
                 gb.Run(player);
-                BitmapData bmd = screen.LockBits(new Rectangle(0, 0, 320, 288), ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+                BitmapData bmd = screen.LockBits(new Rectangle(0, 0, 512, 448), ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
                 uint* pixels = (uint*)bmd.Scan0;
+                if (gb.rom.SGB && gb.sgb.newBorder)
+                {
+                    for (int imgY = 0; imgY < 448; imgY++)
+                        for (int imgX = 0; imgX < 512; imgX++)
+                            pixels[(imgY * 512) + imgX] = gb.sgb.border[(imgY / 2), (imgX / 2)];
+                }
                 for (int imgY = 0; imgY < 288; imgY++)
                     for (int imgX = 0; imgX < 320; imgX++)
-                        pixels[(imgY * 320) + imgX] = gb.lcd.screen[(imgY / 2), (imgX / 2)];
-                //for (int imgY = 0; imgY < 144; imgY++)
-                //    for (int imgX = 0; imgX < 160; imgX++)
-                //        pixels[(imgY * 320) + imgX] = gb.lcd.screen[(imgY), (imgX)];
+                        pixels[((imgY + 80) * 512) + (imgX + 96)] = gb.lcd.screen[(imgY / 2), (imgX / 2)];
                 screen.UnlockBits(bmd);
-                screenGfx.DrawImage(screen, new Point(0,0));
+                screenGfx.DrawImage(screen, new Point(0, 0));
                 Thread.Sleep(sleep);
             }
         }
@@ -150,15 +155,15 @@ namespace gb_o_tron
         {
             if (e.Button == System.Windows.Forms.MouseButtons.Right)
             {
-                if (game != null)
-                    game.Abort();
                 closing = true;
                 if (openFileDialog1.ShowDialog() == System.Windows.Forms.DialogResult.OK)
                 {
                     Thread.Sleep(50);
+                    if (game != null)
+                        game.Abort();
                     gb = new GBCore(File.OpenRead(openFileDialog1.FileName));
-                    if (gb.rom.battery && File.Exists(openFileDialog1.SafeFileName + ".sav"))
-                        gb.SetRam(File.ReadAllBytes(openFileDialog1.SafeFileName + ".sav"));
+                    if (gb.rom.battery && File.Exists(Path.Combine(appPath, "/sav/" + openFileDialog1.SafeFileName + ".sav")))
+                        gb.SetRam(File.ReadAllBytes(Path.Combine(appPath, "/sav/" + openFileDialog1.SafeFileName + ".sav")));
                     game = new Thread(new ThreadStart(play));
                     closing = false;
                     game.Start();

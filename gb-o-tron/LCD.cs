@@ -11,9 +11,9 @@ namespace gb_o_tron
         GBCore gb;
         public byte scanline;
         public int scanlineCycle;
-        public byte mode;
-        public uint[,] screen = new uint [256,256];
-        public int[,] screenZero = new int[256, 256];
+        public byte mode = 2;
+        public uint[,] screen = new uint [144,160];
+        public int[,] screenZero = new int[144, 160];
 
         private uint[] bgPal;
         private uint[] windPal;
@@ -22,7 +22,7 @@ namespace gb_o_tron
 
         private int[] Flip = { 14, 10, 6, 2, -2, -6, -10, -14 };
         private int[] Shift = { 7, 6, 5, 4, 3, 2, 1, 0 };
-        uint alpha = 0xFF000000;
+        uint alpha = 0x3F000000;
         
 
         public LCD(GBCore gb)
@@ -77,7 +77,7 @@ namespace gb_o_tron
 
                         chrAddr += fineYScroll << 1;
                         chrAddr += (vertFlip ? Flip[fineYScroll] : 0);
-                        
+
                         int lowChr = gb.memory.ReadVRAM((attr & 0x8) != 0 ? 1 : 0, chrAddr);
                         int highChr = gb.memory.ReadVRAM((attr & 0x8) != 0 ? 1 : 0, chrAddr + 1) << 1;
 
@@ -108,6 +108,13 @@ namespace gb_o_tron
                             lowChr <<= 1;
                             highChr <<= 1;
                         }
+                    }
+                }
+                else
+                {
+                    for (int x = 0; x < 160; x++)
+                    {
+                        screen[scanline, x] = CGBBGColor(0)[0];
                     }
                 }
                 if ((gb.LCDC & 0x20) != 0) //WindowEnable
@@ -159,7 +166,7 @@ namespace gb_o_tron
 
                                 bool priority = (attr & 0x80) != 0;
 
-                                for (int xPos = begin; xPos != end ; xPos += direction)
+                                for (int xPos = begin; xPos != end; xPos += direction)
                                 {
                                     if (xPos >= 0 && xPos < 160)
                                     {
@@ -199,9 +206,9 @@ namespace gb_o_tron
                                     tileNumber |= 1;
                             }
                             int chrAddr = ((tileNumber << 4) | 0x8000 | ((spriteY & 7) * 2)) + (vertFlip ? tallSprites ? (spriteY > 7) ? Flip[spriteY & 7] - (1 << 4) : Flip[spriteY & 7] + (1 << 4) : Flip[spriteY & 7] : 0);
-                            
-                            int lowChr =  gb.memory.ReadVRAM((attr & 0x8) != 0 ? 1 : 0, chrAddr);
-                            int highChr =  gb.memory.ReadVRAM((attr & 0x8) != 0 ? 1 : 0, chrAddr + 1) << 1;
+
+                            int lowChr = gb.memory.ReadVRAM((attr & 0x8) != 0 ? 1 : 0, chrAddr);
+                            int highChr = gb.memory.ReadVRAM((attr & 0x8) != 0 ? 1 : 0, chrAddr + 1) << 1;
 
                             int begin = horzFlip ? xPos + 7 : xPos;
                             int end = horzFlip ? xPos - 1 : xPos + 8;
@@ -229,15 +236,22 @@ namespace gb_o_tron
                         }
                     }
                 }
-                if (gb.rom.SGB)
-                    ApplySGB();
             }
+            else
+            {
+                for (int x = 0; x < 160; x++)
+                {
+                    screen[scanline, x] = CGBBGColor(0)[0];
+                }
+            }
+            if (gb.rom.SGB)
+                ApplySGB();
         }
         private void ApplySGB()
         {
             for (int x = 0; x < 160; x++)
             {
-                if (gb.sgb.pendingAttrCopy == 3 || gb.sgb.pendingPalCopy == 3)
+                if (gb.sgb.pendingAttrCopy == 3 || gb.sgb.pendingPalCopy == 3 || gb.sgb.pendingTileCopy ==3 || gb.sgb.pendingBGMapCopy == 3)
                 {
                     int tileNumber = ((scanline / 8) * 20) + (x / 8);
                     int xOff = (x % 8);
@@ -249,7 +263,7 @@ namespace gb_o_tron
                     gb.sgb.screenData[tileAddr] |= (byte)(low << Shift[xOff]);
                     gb.sgb.screenData[tileAddr + 1] |= (byte)(high << Shift[xOff]);
                 }
-                screen[scanline, x] = gb.sgb.sgbPalettes[gb.sgb.attrTable[scanline / 8, x / 8]][(screen[scanline, x] & 3)] | alpha;
+                screen[scanline, x] = gb.sgb.sgbPalettes[gb.sgb.attrTable[scanline / 8, x / 8]&3][(screen[scanline, x] & 3)] | alpha;
             }
         }
         private uint[] CGBWindColor(int index)
@@ -361,7 +375,6 @@ namespace gb_o_tron
             if (scanlineCycle >= 456)
             {
                 gb.InterSTATHBlank = false;
-                //if (scanline < 144)
                 scanline++;
                 gb.LY++;
                 if (gb.LY >= 154)
