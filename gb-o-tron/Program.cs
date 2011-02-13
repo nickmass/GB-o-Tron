@@ -11,11 +11,14 @@ namespace gb_o_tron
         /// The main entry point for the application.
         /// </summary>
         [STAThread]
-        static void Main()
+        static void Main(string[] arg)
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new Form1());
+            if (arg.Length > 0)
+                Application.Run(new Form1(arg[0]));
+            else
+                Application.Run(new Form1(""));
         }
     }
 }

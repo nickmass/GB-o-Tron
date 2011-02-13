@@ -27,13 +27,17 @@ namespace gb_o_tron
         int sleep;
         Input player;
         DateTime start;
-        string appPath = Path.GetDirectoryName(Application.ExecutablePath);
+        string appPath;
+        string savFile;
 
-        public Form1()
+        public Form1(string file)
         {
             InitializeComponent();
             CheckForIllegalCrossThreadCalls = false;
             screenGfx = panel1.CreateGraphics();
+            appPath = Path.GetDirectoryName(Application.ExecutablePath);
+            if (File.Exists(file))
+                OpenFile(file);
         }
         public unsafe void play()
         {
@@ -47,21 +51,37 @@ namespace gb_o_tron
                 else if (end > frameRates[frameRater % 3] && sleep != 0)
                     sleep--;
                 frameRater++;
-                this.Text = lastFrameRate.ToString();
+                Text = "GB-o-Tron - " + lastFrameRate.ToString();
                 gb.Run(player);
                 BitmapData bmd = screen.LockBits(new Rectangle(0, 0, 512, 448), ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
                 uint* pixels = (uint*)bmd.Scan0;
-                if (gb.rom.SGB && gb.sgb.newBorder)
+                if (gb.rom.SGB)
                 {
-                    for (int imgY = 0; imgY < 448; imgY++)
-                        for (int imgX = 0; imgX < 512; imgX++)
-                            pixels[(imgY * 512) + imgX] = gb.sgb.border[(imgY / 2), (imgX / 2)];
+                    for (int imgY = 0; imgY < 288; imgY++)
+                        for (int imgX = 0; imgX < 320; imgX++)
+                            pixels[((imgY + 80) * 512) + (imgX + 96)] = gb.sgb.screen[(imgY / 2), (imgX / 2)];
+                    screen.UnlockBits(bmd);
+                    screenGfx.DrawImage(screen, new Point(0, 0));
+                    if (gb.sgb.newBorder)
+                    {
+                        bmd = screen.LockBits(new Rectangle(0, 0, 512, 448), ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+                        pixels = (uint*)bmd.Scan0;
+                        for (int imgY = 0; imgY < 448; imgY++)
+                            for (int imgX = 0; imgX < 512; imgX++)
+                                pixels[(imgY * 512) + imgX] = gb.sgb.border[(imgY / 2), (imgX / 2)];
+                        screen.UnlockBits(bmd);
+                        screenGfx.DrawImage(screen, new Point(0, 0));
+                        gb.sgb.newBorder = false;
+                    }
                 }
-                for (int imgY = 0; imgY < 288; imgY++)
-                    for (int imgX = 0; imgX < 320; imgX++)
-                        pixels[((imgY + 80) * 512) + (imgX + 96)] = gb.lcd.screen[(imgY / 2), (imgX / 2)];
-                screen.UnlockBits(bmd);
-                screenGfx.DrawImage(screen, new Point(0, 0));
+                else
+                {
+                    for (int imgY = 0; imgY < 288; imgY++)
+                        for (int imgX = 0; imgX < 320; imgX++)
+                            pixels[((imgY + 80) * 512) + (imgX + 96)] = gb.lcd.screen[(imgY / 2), (imgX / 2)];
+                    screen.UnlockBits(bmd);
+                    screenGfx.DrawImage(screen, new Point(0, 0));
+                }
                 Thread.Sleep(sleep);
             }
         }
@@ -75,17 +95,43 @@ namespace gb_o_tron
                 frames = 0;
             }
         }
-
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
             if (gb != null)
             {
-                game.Abort();
                 closing = true;
                 Thread.Sleep(50);
+                if (game != null)
+                    game.Abort();
                 if (gb.rom.battery)
-                    File.WriteAllBytes(openFileDialog1.SafeFileName + ".sav", gb.GetRam());
+                    File.WriteAllBytes(savFile, gb.GetRam());
             }
+        }
+        private void openToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            if (openFileDialog1.ShowDialog() == DialogResult.OK)
+            {
+                OpenFile(openFileDialog1.FileName);
+            }
+
+        }
+        private void OpenFile(string file)
+        {
+            closing = true;
+            Thread.Sleep(50);
+            if (game != null)
+                game.Abort();
+            gb = new GBCore(File.OpenRead(file), superGameboyToolStripMenuItem.Checked ? SystemType.SGB : SystemType.GBC);
+            savFile = Path.Combine(appPath, "sav\\" + Path.GetFileName(file) + ".sav");
+            if (gb.rom.battery && File.Exists(savFile))
+                gb.SetRam(File.ReadAllBytes(savFile));
+            game = new Thread(new ThreadStart(play));
+            closing = false;
+            game.Start();
+        }
+        private void exitToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            Close();
         }
 
         private void Form1_KeyUp(object sender, KeyEventArgs e)
@@ -150,25 +196,45 @@ namespace gb_o_tron
                     break;
             }
         }
-
-        private void panel1_MouseClick(object sender, MouseEventArgs e)
+        Point startPoint;
+        bool drag;
+        private void panel1_MouseMove(object sender, MouseEventArgs e)
         {
-            if (e.Button == System.Windows.Forms.MouseButtons.Right)
+            if (drag)
             {
-                closing = true;
-                if (openFileDialog1.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-                {
-                    Thread.Sleep(50);
-                    if (game != null)
-                        game.Abort();
-                    gb = new GBCore(File.OpenRead(openFileDialog1.FileName));
-                    if (gb.rom.battery && File.Exists(Path.Combine(appPath, "/sav/" + openFileDialog1.SafeFileName + ".sav")))
-                        gb.SetRam(File.ReadAllBytes(Path.Combine(appPath, "/sav/" + openFileDialog1.SafeFileName + ".sav")));
-                    game = new Thread(new ThreadStart(play));
-                    closing = false;
-                    game.Start();
-                }
+                Point p1 = new Point(e.X, e.Y);
+                Point p2 = PointToScreen(p1);
+                Point p3 = new Point(p2.X - startPoint.X, p2.Y - startPoint.Y);
+                Location = p3;
             }
         }
+
+        private void panel1_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                drag = true;
+                startPoint = new Point(e.X, e.Y);
+            }
+        }
+
+        private void panel1_MouseUp(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                drag = false;
+            }
+        }
+        private void Form1_DragDrop(object sender, DragEventArgs e)
+        {
+            OpenFile(((string[])e.Data.GetData(DataFormats.FileDrop))[0]);
+        }
+
+        private void Form1_DragEnter(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(DataFormats.FileDrop, false) == true)
+                e.Effect = DragDropEffects.All;
+        }
+
     }
 }

@@ -38,6 +38,12 @@ namespace gb_o_tron
         public byte headerChecksum;
         public ushort glocalChecksum;
     }
+    public enum SystemType
+    {
+        DMG,
+        GBC,
+        SGB
+    }
     public class GBCore
     {
         private Input input;
@@ -259,8 +265,11 @@ namespace gb_o_tron
         byte[][] bootBanks = new byte[3][];
         bool booted = false;
 
-        public GBCore(Stream image)
+        SystemType systemType;
+
+        public GBCore(Stream image, SystemType systemType)
         {
+            this.systemType = systemType;
             image.Position = 0x134;
             cpuClock = NORMALSPEED;
             for(int i = 0; i < 15; i++)
@@ -378,6 +387,20 @@ namespace gb_o_tron
                     MessageBox.Show(rom.cartType.ToString());
                     goto case 0x01;
                     
+            }
+            switch (this.systemType)
+            {
+                case SystemType.DMG:
+                    rom.cgbMode = false;
+                    rom.SGB = false;
+                    break;
+                case SystemType.GBC:
+                    rom.SGB = false;
+                    break;
+                case SystemType.SGB:
+                    if(rom.SGB)
+                        rom.cgbMode = false;
+                    break;
             }
             lcd = new LCD(this);
             if (rom.SGB)
@@ -1967,7 +1990,7 @@ namespace gb_o_tron
                             {
                                 if (DMAHBlank)
                                 {
-                                    nextByte = (byte)(((DMALength - DMAPosition - 1) / 10) & 0x7F);
+                                    nextByte = (byte)((((DMALength - DMAPosition) / 0x10) - 1) & 0x7F);
                                 }
                             }
                         }
@@ -2134,18 +2157,21 @@ namespace gb_o_tron
                         BGP[1] = (value >> 2) & 3;
                         BGP[2] = (value >> 4) & 3;
                         BGP[3] = (value >> 6) & 3;
+                        lcd.UpdatePalette(false);
                         break;
                     case 0xFF48://OBP0 - Object Palette 0 Data (R/W)
                         OBP0[0] = value & 3;
                         OBP0[1] = (value >> 2) & 3;
                         OBP0[2] = (value >> 4) & 3;
                         OBP0[3] = (value >> 6) & 3;
+                        lcd.UpdatePalette(false);
                         break;
                     case 0xFF49://OBP1 - Object Palette 1 Data (R/W)
                         OBP1[0] = value & 3;
                         OBP1[1] = (value >> 2) & 3;
                         OBP1[2] = (value >> 4) & 3;
                         OBP1[3] = (value >> 6) & 3;
+                        lcd.UpdatePalette(false);
                         break;
                     case 0xFF4A://WY - Window Y Position (R/W)
                         WY = (byte)(value & 0xFF);
@@ -2162,19 +2188,19 @@ namespace gb_o_tron
                             memory.SwapVRAM(value & 1);
                         break;
                     case 0xFF51://HDMA1 - CGB Mode Only - New DMA Source, High
-                        if (rom.cgbMode && !DMAActive)
+                        if (rom.cgbMode)
                             DMASourceAddress = (DMASourceAddress & 0xFF) | (value << 8);
                         break;
                     case 0xFF52://HDMA2 - CGB Mode Only - New DMA Source, Low
-                        if (rom.cgbMode && !DMAActive)
+                        if (rom.cgbMode)
                             DMASourceAddress = (DMASourceAddress & 0xFF00) | (value & 0xF0);
                         break;
                     case 0xFF53://HDMA3 - CGB Mode Only - New DMA Destination, High
-                        if (rom.cgbMode && !DMAActive)
+                        if (rom.cgbMode)
                             DMADstAddress = (DMADstAddress & 0xFF) | (((value & 0x1F) | 0x80) << 8);
                         break;
                     case 0xFF54://HDMA4 - CGB Mode Only - New DMA Destination, Low
-                        if (rom.cgbMode && !DMAActive)
+                        if (rom.cgbMode)
                             DMADstAddress = (DMADstAddress & 0xFF00) | (value & 0xF0);
                         break;
                     case 0xFF55://HDMA5 - CGB Mode Only - New DMA Length/Mode/Start
@@ -2182,7 +2208,8 @@ namespace gb_o_tron
                         {
                             DMAActive = true;
                             DMAHBlank = (value & 0x80) != 0;
-                            DMALength = ((value & 0x7F) + 1) * 10;
+                            DMALength = ((value & 0x7F) + 1) * 0x10;
+                            DMAPosition = 0;
                             if (!DMAHBlank)
                             {
                                 while(DMAPosition < DMALength)
@@ -2190,6 +2217,7 @@ namespace gb_o_tron
                                     memory[DMADstAddress + DMAPosition] = memory[DMASourceAddress + DMAPosition];
                                     DMAPosition++;
                                 }
+                                AddCycles((DMALength / 0x10) * 8);
                                 DMAActive = false;
                             }
                         }
@@ -2207,6 +2235,7 @@ namespace gb_o_tron
                             cgbBGP[cgbBGPIndex] = (byte)(value & 0xFF);
                             if (cgbBGPAuto)
                                 cgbBGPIndex = (cgbBGPIndex + 1) & 0x3F;
+                            lcd.UpdatePalette(true);
                         }
                         break;
                     case 0xFF6A://OCPS/OBPI - CGB Mode Only - Sprite Palette Index
@@ -2222,6 +2251,7 @@ namespace gb_o_tron
                             cgbOBP[cgbOBPIndex ] = (byte)(value & 0xFF);
                             if (cgbOBPAuto)
                                 cgbOBPIndex = (cgbOBPIndex + 1) & 0x3F;
+                            lcd.UpdatePalette(true);
                         }
                         break;
                     case 0xFF70://SVBK - CGB Mode Only - WRAM Bank
@@ -2255,6 +2285,12 @@ namespace gb_o_tron
         private void LockOP() //Missing op should lock up the gameboy CPU when encountered;
         {
             serialData += "Lock ";
+        }
+        public void AddCycles(int cycles)
+        {
+            lcd.AddCycles(cycles);
+            TimerClock(cycles);
+            DividerClock(cycles);
         }
         private void DividerClock(int cycles)
         {

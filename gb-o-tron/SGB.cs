@@ -16,8 +16,7 @@ namespace gb_o_tron
         bool inStream;
         byte curJoypad;
         byte totalJoypads = 0xF;
-        bool mask;
-        private int[] Shift = { 7, 6, 5, 4, 3, 2, 1, 0 };
+        public int mask;
 
         public byte[] screenData = new byte[5760];
 
@@ -38,6 +37,8 @@ namespace gb_o_tron
         public int[] bgMap = new int[0x1000];
         public uint[,] border = new uint[224, 256];
         public bool newBorder = false;
+
+        public uint[,] screen = new uint[144, 160];
 
         public SGB(GBCore gb)
         {
@@ -366,7 +367,7 @@ namespace gb_o_tron
                         }
                     }
                     if ((stream[8] & 0x40) != 0)
-                        mask = false;
+                        mask = 0;
                     break;
                 case 0x0B://SGB Command 0Bh - PAL_TRN
                     pendingPalCopy = 1;
@@ -401,13 +402,10 @@ namespace gb_o_tron
                         }
                     }
                     if ((stream[0] & 0x40) != 0)
-                        mask = false;
+                        mask = 0;
                     break;
                 case 0x17://SGB Command 17h - MASK_EN
-                    if (stream[0] == 0)
-                        mask = false;
-                    else
-                        mask = true; //Should support the different masking types but screen freezing would be a pain
+                    mask = stream[0] & 3;
                     break;
             }
             commandQ += command.ToString("X2") + " ";
@@ -419,7 +417,7 @@ namespace gb_o_tron
             uint g = (uint)(bgr15 >> 5 & 0x1F);
             uint b = (uint)(bgr15 >> 10 & 0x1F);
             
-            return ((r * 13 + g * 2 + b) >> 1) << 16 | ((g * 3 + b) << 9) | ((r * 3 + g * 2 + b * 11) >> 1);
+            return ((r * 13 + g * 2 + b) >> 1) << 16 | ((g * 3 + b) << 9) | ((r * 3 + g * 2 + b * 11) >> 1) | 0xFF000000;
         }
         public static int ReadBit(int value)
         {
@@ -433,6 +431,7 @@ namespace gb_o_tron
         }
         public void Frame()
         {
+            ApplySGB();
             if (pendingPalCopy >= 1)
                 pendingPalCopy++;
             if (pendingAttrCopy >= 1)
@@ -468,7 +467,7 @@ namespace gb_o_tron
                     systemTiles[i | tileAddr] = screenData[i];
                     screenData[i] = 0;
                 }
-                DrawScreen();
+                DrawBorder();
             }
             if (pendingBGMapCopy >= 4)
             {
@@ -479,10 +478,38 @@ namespace gb_o_tron
                     screenData[i * 2] = 0;
                     screenData[(i * 2) + 1] = 0;
                 }
-                DrawScreen();
+                DrawBorder();
             }
         }
-        public void DrawScreen()
+        public void ApplySGB()
+        {
+            for (int scanline = 0; scanline < 144; scanline++) //this might mess some stuff up or it may be more accurate, from a certain prespective it does make more sense for the gameboy to be handled a frame at a time.
+            {
+                for (int x = 0; x < 160; x++)
+                {
+                    if (pendingAttrCopy == 3 || pendingPalCopy == 3 || pendingTileCopy == 3 || pendingBGMapCopy == 3)
+                    {
+                        int tileNumber = ((scanline / 8) * 20) + (x / 8);
+                        int xOff = 7 - (x % 8);
+                        int yOff = (scanline % 8);
+                        int tileAddr = tileNumber * 16;
+                        tileAddr += yOff * 2;
+                        uint high = (gb.lcd.screen[scanline, x] >> 1) & 1;
+                        uint low = gb.lcd.screen[scanline, x] & 1;
+                        screenData[tileAddr] |= (byte)(low << xOff);
+                        screenData[tileAddr + 1] |= (byte)(high << xOff);
+                    }
+                    if (mask == 0)//No Mask
+                        screen[scanline, x] = sgbPalettes[attrTable[scanline / 8, x / 8]][gb.lcd.screen[scanline, x]]; //Made the decision to not apply alpha to SGB games
+                    else if (gb.sgb.mask == 2)//Back Mask
+                        screen[scanline, x] = 0xFF000000;
+                    else if (gb.sgb.mask == 3)//Color 0 Mask
+                        screen[scanline, x] = sgbPalettes[0][0];
+                    //Else freeze on last frame
+                }
+            }
+        }
+        public void DrawBorder()
         {
             newBorder = true;
             uint[][] palettes = new uint[4][];
@@ -506,24 +533,24 @@ namespace gb_o_tron
                     {
                         int chrAddr = (tile & 0xFF) * 32;
                         bool horzFlip = (tile & 0x4000) != 0;
+                        bool vertFlip = (tile & 0x8000) != 0;
                         int xStart = horzFlip ? 0 : 7;
                         int xEnd = horzFlip ? 8 : -1;
                         int xDirection = horzFlip ? 1 : -1;
-                        bool vertFlip = (tile & 0x8000) != 0;
                         for (int line = 0; line < 8; line++)
                         {
                             int aChr = systemTiles[chrAddr];
                             int bChr = systemTiles[chrAddr + 1] << 1;
                             int cChr = systemTiles[chrAddr + 16] << 2;
                             int dChr = systemTiles[chrAddr + 16 + 1] << 3;
-                            int vertFlipper = vertFlip ? Shift[line] : line;
+                            int vertFlipper = vertFlip ? 7 - line : line;
                             for (int x = xStart; x != xEnd; x += xDirection)
                             {
                                 int color = (aChr & 1) | (bChr & 2) | (cChr & 4) | (dChr & 8);
                                 //if (color == 0)
-                                //    border[(tileY * 8) + line, (tileX * 8) + x] = 0;
+                                //    border[(tileY * 8) + line, (tileX * 8) + x] = 0x00000000;
                                 //else
-                                border[(tileY * 8) + vertFlipper, (tileX * 8) + x] = palettes[palette][color] | 0x3F000000;
+                                    border[(tileY * 8) + vertFlipper, (tileX * 8) + x] = palettes[palette][color] & 0x3FFFFFFF;
                                 aChr >>= 1;
                                 bChr >>= 1;
                                 cChr >>= 1;
@@ -534,11 +561,17 @@ namespace gb_o_tron
                     }
                     else
                     {
+                        uint color;
+                        if (!((tileY > 4 && tileY < 23) && (tileX > 5 && tileX < 26)))
+                            color = sgbToRgb32(0xFFFF) & 0x3FFFFFFF;
+                        else
+                            color = 0x00000000;
                         for (int line = 0; line < 8; line++)
                         {
                             for (int x = 0; x < 8; x++)
                             {
-                                border[(tileY * 8) + line, (tileX * 8) + x] = 0;
+
+                                border[(tileY * 8) + line, (tileX * 8) + x] = color;
                             }
                         }
                     }

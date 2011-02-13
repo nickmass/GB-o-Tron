@@ -15,34 +15,25 @@ namespace gb_o_tron
         public uint[,] screen = new uint [144,160];
         public int[,] screenZero = new int[144, 160];
 
-        private uint[] bgPal;
-        private uint[] windPal;
-        private uint[] obp0Pal;
-        private uint[] obp1Pal;
+        private uint[][] bgPal;
+        private uint[][] obpPal;
 
         private int[] Flip = { 14, 10, 6, 2, -2, -6, -10, -14 };
-        private int[] Shift = { 7, 6, 5, 4, 3, 2, 1, 0 };
-        uint alpha = 0x3F000000;
-        
+        public uint alpha = 0x3F000000;
+
+        private uint[] grayPal;
 
         public LCD(GBCore gb)
         {
             this.gb = gb;
-            bgPal = new uint[]{ alpha | 0x00FFFFFF, alpha | 0x00AAAAAA, alpha | 0x00555555, alpha | 0x00000000 };
-            windPal = new uint[] { alpha | 0x00FFFFFF, alpha | 0x00AAAAAA, alpha | 0x00555555, alpha | 0x00000000 };
-            obp0Pal = new uint[] { alpha | 0x00FFFFFF, alpha | 0x00AAAAAA, alpha | 0x00555555, alpha | 0x00000000 };
-            obp1Pal = new uint[] { alpha | 0x00FFFFFF, alpha | 0x00AAAAAA, alpha | 0x00555555, alpha | 0x00000000 };
-
-            //Poke red pal?
-            /*
-            bgPal = new uint[] { alpha | 0x00FFFFFF, alpha | 0x00FE8584, alpha | 0x00943A3B, alpha | 0x00000000 };
-            windPal = new uint[] { alpha | 0x00FFFFFF, alpha | 0x00FE8584, alpha | 0x00943A3B, alpha | 0x00000000 };
-            obp0Pal = new uint[] { alpha | 0x00FFFFFF, alpha | 0x007CFF31, alpha | 0x00008301, alpha | 0x00000000 };
-            obp1Pal = new uint[] { alpha | 0x00FFFFFF, alpha | 0x0065A49A, alpha | 0x000000FE, alpha | 0x00000000 };
-            */
-            //bgPal = new int[] { -65536, -5636096, -11206656, -13434880 };
-            //windPal = new int[] { -16711936, -16733696, -16755456, -16764160 };
-            //spritePal = new int[] { -16776961, -16777046, -16777131, -16777165 };
+            bgPal = new uint[8][];
+            obpPal = new uint[8][];
+            for (int i = 0; i < 8; i++)
+            {
+                bgPal[i] = new uint[4];
+                obpPal[i] = new uint[4];
+            }
+            grayPal = new uint[] { alpha | 0x00FFFFFF, alpha | 0x00AAAAAA, alpha | 0x00555555, alpha | 0x00000000 };
         }
         
         public void DrawScanline()
@@ -52,7 +43,6 @@ namespace gb_o_tron
                 bool tileTable = (gb.LCDC & 0x10) != 0;
                 if ((gb.LCDC & 0x01) != 0) //BGEnable
                 {
-                    uint[] cgbBGPal;
                     int bgTileMap;
                     if ((gb.LCDC & 0x08) != 0)
                         bgTileMap = 0x9C00;
@@ -84,29 +74,27 @@ namespace gb_o_tron
                         int start = ((x * 8) - gb.SCX);
 
                         int color;
-                        uint palColor;
                         int wrap;
 
-                        int begin = horzFlip ? start + 7 : start;
-                        int end = horzFlip ? start - 1 : start + 8;
-                        int direction = horzFlip ? -1 : 1;
+                        int begin = horzFlip ? start : start + 7;
+                        int end = horzFlip ? start + 8 : start - 1;
+                        int direction = horzFlip ? 1 : -1;
 
                         bool priority = (attr & 0x80) != 0;
 
-                        cgbBGPal = CGBBGColor(attr & 0x7);
+                        int palTable = attr & 0x7;
 
                         for (int xPos = begin; xPos != end; xPos += direction)
                         {
                             wrap = xPos & 0xFF;
                             if (wrap < 160)
                             {
-                                color = ((lowChr & 0x80) | (highChr & 0x100)) >> 7;
-                                palColor = cgbBGPal[color];
+                                color = (lowChr & 0x01) | (highChr & 0x02);
                                 screenZero[scanline, wrap] = (color == 0) ? 0 : (priority ? 3 : 2);
-                                screen[scanline, wrap] = palColor;
+                                screen[scanline, wrap] = bgPal[palTable][color];
                             }
-                            lowChr <<= 1;
-                            highChr <<= 1;
+                            lowChr >>= 1;
+                            highChr >>= 1;
                         }
                     }
                 }
@@ -114,12 +102,11 @@ namespace gb_o_tron
                 {
                     for (int x = 0; x < 160; x++)
                     {
-                        screen[scanline, x] = CGBBGColor(0)[0];
+                        screen[scanline, x] = bgPal[0][0];
                     }
                 }
                 if ((gb.LCDC & 0x20) != 0) //WindowEnable
                 {
-                    uint[] cgbWindowPal;
                     int windowTileMap;
                     if ((gb.LCDC & 0x40) != 0)
                         windowTileMap = 0x9C00;
@@ -156,13 +143,12 @@ namespace gb_o_tron
                                 int highChr = gb.memory.ReadVRAM((attr & 0x8) != 0 ? 1 : 0, chrAddr + 1) << 1;
 
                                 int color;
-                                uint palColor;
 
-                                cgbWindowPal = CGBWindColor(attr & 0x7);
+                                int palTable = attr & 0x7;
 
-                                int begin = horzFlip ? start + 7 : start;
-                                int end = horzFlip ? start - 1 : start + 8;
-                                int direction = horzFlip ? -1 : 1;
+                                int begin = horzFlip ? start : start + 7;
+                                int end = horzFlip ? start + 8 : start - 1;
+                                int direction = horzFlip ? 1 : -1;
 
                                 bool priority = (attr & 0x80) != 0;
 
@@ -170,13 +156,12 @@ namespace gb_o_tron
                                 {
                                     if (xPos >= 0 && xPos < 160)
                                     {
-                                        color = ((lowChr & 0x80) | (highChr & 0x100)) >> 7;
-                                        palColor = cgbWindowPal[color];
+                                        color = (lowChr & 0x1) | (highChr & 0x2);
                                         screenZero[scanline, xPos] = (color == 0) ? (screenZero[scanline, xPos] == 3 ? 3 : 0) : (priority ? 3 : 2);
-                                        screen[scanline, xPos] = palColor;
+                                        screen[scanline, xPos] = bgPal[palTable][color];
                                     }
-                                    lowChr <<= 1;
-                                    highChr <<= 1;
+                                    lowChr >>= 1;
+                                    highChr >>= 1;
                                 }
                             }
                         }
@@ -185,7 +170,6 @@ namespace gb_o_tron
                 if ((gb.LCDC & 0x02) != 0) //SpriteEnable
                 {
                     bool tallSprites = (gb.LCDC & 0x04) != 0;
-                    uint[] cgbSpritePal;
                     for (int sprite = 39; sprite >= 0; sprite--)
                     {
                         int yPos = gb.oamRam[(sprite << 2)] - 16;
@@ -210,28 +194,24 @@ namespace gb_o_tron
                             int lowChr = gb.memory.ReadVRAM((attr & 0x8) != 0 ? 1 : 0, chrAddr);
                             int highChr = gb.memory.ReadVRAM((attr & 0x8) != 0 ? 1 : 0, chrAddr + 1) << 1;
 
-                            int begin = horzFlip ? xPos + 7 : xPos;
-                            int end = horzFlip ? xPos - 1 : xPos + 8;
-                            int direction = horzFlip ? -1 : 1;
-
-                            cgbSpritePal = CGBOBColor(palTable);
+                            int begin = horzFlip ? xPos : xPos + 7;
+                            int end = horzFlip ? xPos + 8 : xPos - 1;
+                            int direction = horzFlip ? 1 : -1;
 
                             int color;
-                            uint palColor;
 
                             for (int xPosition = begin; xPosition != end; xPosition += direction)//each pixel in tile
                             {
                                 if (xPosition >= 0 && xPosition < 160)
                                 {
-                                    color = ((lowChr & 0x80) | (highChr & 0x100)) >> 7;
-                                    palColor = cgbSpritePal[color];
+                                    color = ((lowChr & 0x1) | (highChr & 0x2));
                                     if (((above && screenZero[scanline, xPosition] == 2) || screenZero[scanline, xPosition] == 0) && color != 0)
                                     {
-                                        screen[scanline, xPosition] = palColor;
+                                        screen[scanline, xPosition] = obpPal[palTable][color];
                                     }
                                 }
-                                lowChr <<= 1;
-                                highChr <<= 1;
+                                lowChr >>= 1;
+                                highChr >>= 1;
                             }
                         }
                     }
@@ -241,124 +221,44 @@ namespace gb_o_tron
             {
                 for (int x = 0; x < 160; x++)
                 {
-                    screen[scanline, x] = CGBBGColor(0)[0];
+                    screen[scanline, x] = bgPal[0][0];
                 }
-            }
-            if (gb.rom.SGB)
-                ApplySGB();
-        }
-        private void ApplySGB()
-        {
-            for (int x = 0; x < 160; x++)
-            {
-                if (gb.sgb.pendingAttrCopy == 3 || gb.sgb.pendingPalCopy == 3 || gb.sgb.pendingTileCopy ==3 || gb.sgb.pendingBGMapCopy == 3)
-                {
-                    int tileNumber = ((scanline / 8) * 20) + (x / 8);
-                    int xOff = (x % 8);
-                    int yOff = (scanline % 8);
-                    int tileAddr = tileNumber * 16;
-                    tileAddr += yOff * 2;
-                    uint high = (screen[scanline, x] >> 1) & 1;
-                    uint low = screen[scanline, x] & 1;
-                    gb.sgb.screenData[tileAddr] |= (byte)(low << Shift[xOff]);
-                    gb.sgb.screenData[tileAddr + 1] |= (byte)(high << Shift[xOff]);
-                }
-                screen[scanline, x] = gb.sgb.sgbPalettes[gb.sgb.attrTable[scanline / 8, x / 8]&3][(screen[scanline, x] & 3)] | alpha;
             }
         }
-        private uint[] CGBWindColor(int index)
+        public void UpdatePalette(bool cgb)
         {
-            uint[] colors = new uint[4];
-            if (gb.rom.cgbMode)
+            if (cgb)
             {
-                for (int i = 0; i < 4; i++)
+                for (int pal = 0; pal < 8; pal++)
                 {
-                    int entry = gb.cgbBGP[index * 8 + (i * 2)] | gb.cgbBGP[(index * 8) + 1 + (i * 2)] << 8;
-                    colors[i] = alpha | gbcToRgb32(entry);
+                    for (int col = 0; col < 4; col++)
+                    {
+                        bgPal[pal][col] = gbcToRgb32(gb.cgbBGP[pal * 8 + (col * 2)] | gb.cgbBGP[(pal * 8) + 1 + (col * 2)] << 8) | alpha;
+                        obpPal[pal][col] = gbcToRgb32(gb.cgbOBP[pal * 8 + (col * 2)] | gb.cgbOBP[(pal * 8) + 1 + (col * 2)] << 8) | alpha;
+                    }
                 }
             }
-            else
+            else if(!gb.rom.cgbMode)
             {
                 if (gb.rom.SGB)
                 {
-                    for (int i = 0; i < 4; i++)
-                        colors[i] = (byte)(gb.BGP[i] & 0x3);
-                }
-                else
-                {
-                    for (int i = 0; i < 4; i++)
-                        colors[i] = windPal[gb.BGP[i]];
-                }
-            }
-            return colors;
-        }
-        private uint[] CGBBGColor(int index)
-        {
-            uint[] colors = new uint[4];
-            if (gb.rom.cgbMode)
-            {
-                for (int i = 0; i < 4; i++)
-                {
-                    int entry = gb.cgbBGP[index * 8 + (i * 2)] | gb.cgbBGP[(index * 8) + 1 + (i * 2)] << 8;
-                    colors[i] = alpha | gbcToRgb32(entry);
-                }
-            }
-            else
-            {
-                if (gb.rom.SGB)
-                {
-                    for (int i = 0; i < 4; i++)
-                        colors[i] = (byte)(gb.BGP[i] & 0x3);
-                }
-                else
-                {
-                    for (int i = 0; i < 4; i++)
-                        colors[i] = bgPal[gb.BGP[i]];
-                }
-            }
-            return colors;
-        }
-        private uint[] CGBOBColor(int index)
-        {
-            uint[] colors = new uint[4];
-            if (gb.rom.cgbMode)
-            {
-                for (int i = 0; i < 4; i++)
-                {
-                    int entry = gb.cgbOBP[index * 8 + (i * 2)] | gb.cgbOBP[(index * 8) + 1 + (i * 2)] << 8;
-                    colors[i] = alpha | gbcToRgb32(entry);
-                }
-            }
-            else
-            {
-                if (index == 0)
-                {
-                    if (gb.rom.SGB)
+                    for (int col = 0; col < 4; col++)
                     {
-                        for (int i = 0; i < 4; i++)
-                            colors[i] = (byte)(gb.OBP0[i] & 0x3);
-                    }
-                    else
-                    {
-                        for (int i = 0; i < 4; i++)
-                            colors[i] = obp0Pal[gb.OBP0[i]];
+                        bgPal[0][col] = (byte)gb.BGP[col];
+                        obpPal[0][col] = (byte)gb.OBP0[col];
+                        obpPal[1][col] = (byte)gb.OBP1[col];
                     }
                 }
                 else
                 {
-                    if (gb.rom.SGB)
+                    for (int col = 0; col < 4; col++)
                     {
-                        for (int i = 0; i < 4; i++)
-                            colors[i] = (byte)(gb.OBP1[i] & 0x3);
-                    }
-                    else
-                    {
-                        for (int i = 0; i < 4; i++)
-                            colors[i] = obp1Pal[gb.OBP1[i]];
+                        bgPal[0][col] = grayPal[gb.BGP[col]];
+                        obpPal[0][col] = grayPal[gb.OBP0[col]];
+                        obpPal[1][col] = grayPal[gb.OBP1[col]];
                     }
                 }
             }
-            return colors;
         }
         static uint gbcToRgb32(int bgr15) {
 	        uint r = (uint)(bgr15 & 0x1F);
@@ -422,6 +322,7 @@ namespace gb_o_tron
                     {
                         gb.DMAActive = false;
                     }
+                    gb.AddCycles(8);
                 }
             }
             else if (scanlineCycle >= 80 && scanlineCycle < 252 && scanline < 144)
