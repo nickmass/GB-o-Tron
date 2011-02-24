@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.IO;
 
 namespace gb_o_tron.mappers
 {
@@ -53,6 +54,20 @@ namespace gb_o_tron.mappers
                     gb.memory.SetReadOnly(0xA000, 8, readOnly);
                 }
             }
+        }
+        public void StateSave(BinaryWriter writer)
+        {
+            writer.Write(romBank);
+            writer.Write(romBankHigh);
+            writer.Write(ramBank);
+            writer.Write(readOnly);
+        }
+        public void StateLoad(BinaryReader reader)
+        {
+            romBank = reader.ReadByte();
+            romBankHigh = reader.ReadByte();
+            ramBank = reader.ReadByte();
+            readOnly = reader.ReadBoolean();
         }
     }
 }

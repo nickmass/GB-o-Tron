@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Windows.Forms;
+using System.IO;
 
 namespace gb_o_tron
 {
@@ -334,6 +335,19 @@ namespace gb_o_tron
                 gb.InterSTATCoincidence = true;
             else
                 gb.InterSTATCoincidence = false;
+        }
+        public void StateSave(BinaryWriter writer)
+        {
+            writer.Write(scanline);
+            writer.Write(scanlineCycle);
+            writer.Write(mode);
+        }
+        public void StateLoad(BinaryReader reader)
+        {
+            scanline = reader.ReadByte();
+            scanlineCycle = reader.ReadInt32();
+            mode = reader.ReadByte();
+            UpdatePalette(gb.rom.cgbMode);
         }
     }
 }

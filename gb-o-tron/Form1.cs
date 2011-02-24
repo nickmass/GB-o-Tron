@@ -19,6 +19,7 @@ namespace gb_o_tron
         Thread game;
         Bitmap screen = new Bitmap(512, 448);
         Graphics screenGfx;
+        int frame;
         int frames;
         int lastFrameRate;
         int[] frameRates = { 16, 17, 17};
@@ -29,6 +30,15 @@ namespace gb_o_tron
         DateTime start;
         string appPath;
         string savFile;
+
+        SaveState[] saveBuffer;
+        int saveBufferCounter = 0;
+        int saveBufferAvaliable = 0;
+        int saveBufferFreq = 2;
+        int saveBufferSeconds = 240;
+        bool saveSafeRewind = false;
+        bool rewinding = false;
+        bool rewindingEnabled = true;
 
         public Form1(string file)
         {
@@ -51,7 +61,45 @@ namespace gb_o_tron
                 else if (end > frameRates[frameRater % 3] && sleep != 0)
                     sleep--;
                 frameRater++;
+                frame++;
                 Text = "GB-o-Tron - " + lastFrameRate.ToString();
+                if (rewindingEnabled)
+                {
+                    if (rewinding)
+                    {
+
+                        if (frame % ((saveBufferFreq == 1 ? 2 : saveBufferFreq) / 2) == 0)
+                        {
+                            if (saveBufferAvaliable != 0)
+                            {
+                                saveBufferAvaliable--;
+                                saveBufferCounter--;
+                                if (saveBufferCounter < 0)
+                                    saveBufferCounter = ((60 / saveBufferFreq) * saveBufferSeconds) - 1;
+
+                            }
+                            saveSafeRewind = true;
+                        }
+                        if (saveSafeRewind)
+                        {
+                            gb.StateLoad(saveBuffer[saveBufferCounter]);
+                        }
+                    }
+                    else
+                    {
+                        saveSafeRewind = false;
+                        if (frame % saveBufferFreq == 0)
+                        {
+                            saveBuffer[saveBufferCounter] = gb.StateSave();
+                            saveBufferCounter++;
+                            if (saveBufferCounter >= ((60 / saveBufferFreq) * saveBufferSeconds))
+                                saveBufferCounter = 0;
+                            if (saveBufferAvaliable != ((60 / saveBufferFreq) * saveBufferSeconds))
+                                saveBufferAvaliable++;
+                        }
+
+                    }
+                }
                 gb.Run(player);
                 BitmapData bmd = screen.LockBits(new Rectangle(0, 0, 512, 448), ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
                 uint* pixels = (uint*)bmd.Scan0;
@@ -121,12 +169,15 @@ namespace gb_o_tron
             Thread.Sleep(50);
             if (game != null)
                 game.Abort();
+            if (gb != null && gb.rom.battery)
+                File.WriteAllBytes(savFile, gb.GetRam());
             gb = new GBCore(File.OpenRead(file), superGameboyToolStripMenuItem.Checked ? SystemType.SGB : SystemType.GBC);
             savFile = Path.Combine(appPath, "sav\\" + Path.GetFileName(file) + ".sav");
             if (gb.rom.battery && File.Exists(savFile))
                 gb.SetRam(File.ReadAllBytes(savFile));
             game = new Thread(new ThreadStart(play));
             closing = false;
+            saveBuffer = new SaveState[(60 / saveBufferFreq) * saveBufferSeconds];
             game.Start();
         }
         private void exitToolStripMenuItem_Click(object sender, EventArgs e)
@@ -162,6 +213,9 @@ namespace gb_o_tron
                 case Keys.ShiftKey:
                     player.select = false;
                     break;
+                case Keys.Tab:
+                    rewinding = false;
+                    break;
             }
 
         }
@@ -193,6 +247,9 @@ namespace gb_o_tron
                     break;
                 case Keys.ShiftKey:
                     player.select = true;
+                    break;
+                case Keys.Tab:
+                    rewinding = true;
                     break;
             }
         }

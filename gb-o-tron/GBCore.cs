@@ -2540,5 +2540,181 @@ namespace gb_o_tron
             for (int i = 0x00; i < rom.ramSize * 0x400; i++)
                  memory.banks[(i / 0x400) + memory.ramSwapOffset][i % 0x400] = sram[i];
         }
+
+        public SaveState StateSave()
+        {
+            SaveState newState = new SaveState();
+            newState.stateStream = new MemoryStream();
+            BinaryWriter writer = new BinaryWriter(newState.stateStream);
+            writer.Seek(0, SeekOrigin.Begin);
+            writer.Write(regAF);
+            writer.Write(regBC);
+            writer.Write(regDE);
+            writer.Write(regHL);
+            writer.Write(regSP);
+            writer.Write(regPC);
+            writer.Write(IME);
+            writer.Write(InterVBlank);
+            writer.Write(InterVBlankEnabled);
+            writer.Write(InterTimer);
+            writer.Write(InterTimerEnabled);
+            writer.Write(InterSerial);
+            writer.Write(InterSerialEnabled);
+            writer.Write(InterJoypad);
+            writer.Write(InterJoypadEnabled);
+            writer.Write(InterLCDSTATEnabled);
+            writer.Write(InterSTATOAM);
+            writer.Write(InterSTATOAMEnabled);
+            writer.Write(InterSTATHBlank);
+            writer.Write(InterSTATHBlankEnabled);
+            writer.Write(InterSTATVBlank);
+            writer.Write(InterSTATVBlankEnabled);
+            writer.Write(InterSTATCoincidence);
+            writer.Write(InterSTATCoincidenceEnabled);
+            writer.Write(InterSTATRequest);
+            writer.Write(selectButtons);
+            writer.Write(selectDirections);
+            writer.Write(timerEnabled);
+            writer.Write(timerReload);
+            writer.Write(timer);
+            writer.Write(timerClock);
+            writer.Write(timerClockMode);
+            writer.Write(timerClocker);
+            writer.Write(divider);
+            writer.Write(dividerClocker);
+            writer.Write(halted);
+            writer.Write(emulating);
+            writer.Write(cycles);
+            writer.Write(opCycles);
+            writer.Write(cpuClock);
+            writer.Write(LY);
+            writer.Write(LYC);
+            writer.Write(SCY);
+            writer.Write(SCX);
+            writer.Write(WY);
+            writer.Write(WX);
+            writer.Write(LCDC);
+            writer.Write(cgbBGPIndex);
+            writer.Write(cgbBGPAuto);
+            writer.Write(cgbOBPIndex);
+            writer.Write(cgbOBPAuto);
+            writer.Write(wramBank);
+            writer.Write(pendingSpeedChange);
+            writer.Write(DMASourceAddress);
+            writer.Write(DMADstAddress);
+            writer.Write(DMALength);
+            writer.Write(DMAPosition);
+            writer.Write(DMAActive);
+            writer.Write(DMAHBlank);
+            writer.Write(booted);
+            for (int i = 0; i < 4; i++)
+                writer.Write(BGP[i]);
+            for (int i = 0; i < 4; i++)
+                writer.Write(OBP0[i]);
+            for (int i = 0; i < 4; i++)
+                writer.Write(OBP1[i]);
+            for (int i = 0; i < 0xA0; i++)
+                writer.Write(oamRam[i]);
+            for (int i = 0; i < 0x100; i++)
+                writer.Write(hRam[i]);
+            for (int i = 0; i < 0x40; i++)
+                writer.Write(cgbBGP[i]);
+            for (int i = 0; i < 0x40; i++)
+                writer.Write(cgbOBP[i]);
+            memory.StateSave(writer);
+            lcd.StateSave(writer);
+            mapper.StateSave(writer);
+            newState.isStored = true;
+            return newState;
+        }
+
+        public void StateLoad(SaveState oldState)
+        {
+            BinaryReader reader = new BinaryReader(oldState.stateStream);
+            reader.BaseStream.Seek(0, SeekOrigin.Begin);
+            regAF = reader.ReadInt32();
+            regBC = reader.ReadInt32();
+            regDE = reader.ReadInt32();
+            regHL = reader.ReadInt32();
+            regSP = reader.ReadInt32();
+            regPC = reader.ReadInt32();
+            IME = reader.ReadBoolean();
+            InterVBlank = reader.ReadBoolean();
+            InterVBlankEnabled = reader.ReadBoolean();
+            InterTimer = reader.ReadBoolean();
+            InterTimerEnabled = reader.ReadBoolean();
+            InterSerial = reader.ReadBoolean();
+            InterSerialEnabled = reader.ReadBoolean();
+            InterJoypad = reader.ReadBoolean();
+            InterJoypadEnabled = reader.ReadBoolean();
+            InterLCDSTATEnabled = reader.ReadBoolean();
+            InterSTATOAM = reader.ReadBoolean();
+            InterSTATOAMEnabled = reader.ReadBoolean();
+            InterSTATHBlank = reader.ReadBoolean();
+            InterSTATHBlankEnabled = reader.ReadBoolean();
+            InterSTATVBlank = reader.ReadBoolean();
+            InterSTATVBlankEnabled = reader.ReadBoolean();
+            InterSTATCoincidence = reader.ReadBoolean();
+            InterSTATCoincidenceEnabled = reader.ReadBoolean();
+            InterSTATRequest = reader.ReadBoolean();
+            selectButtons = reader.ReadBoolean();
+            selectDirections = reader.ReadBoolean();
+            timerEnabled = reader.ReadBoolean();
+            timerReload = reader.ReadByte();
+            timer = reader.ReadByte();
+            timerClock = reader.ReadInt32();
+            timerClockMode = reader.ReadByte();
+            timerClocker = reader.ReadInt32();
+            divider = reader.ReadByte();
+            dividerClocker = reader.ReadInt32();
+            halted = reader.ReadBoolean();
+            emulating = reader.ReadBoolean();
+            cycles = reader.ReadInt32();
+            opCycles = reader.ReadInt32();
+            cpuClock = reader.ReadInt32();
+            LY = reader.ReadByte();
+            LYC = reader.ReadByte();
+            SCY = reader.ReadByte();
+            SCX = reader.ReadByte();
+            WY = reader.ReadByte();
+            WX = reader.ReadByte();
+            LCDC = reader.ReadByte();
+            cgbBGPIndex = reader.ReadInt32();
+            cgbBGPAuto = reader.ReadBoolean();
+            cgbOBPIndex = reader.ReadInt32();
+            cgbOBPAuto = reader.ReadBoolean();
+            wramBank = reader.ReadInt32();
+            pendingSpeedChange = reader.ReadBoolean();
+            DMASourceAddress = reader.ReadInt32();
+            DMADstAddress = reader.ReadInt32();
+            DMALength = reader.ReadInt32();
+            DMAPosition = reader.ReadInt32();
+            DMAActive = reader.ReadBoolean();
+            DMAHBlank = reader.ReadBoolean();
+            booted = reader.ReadBoolean();
+            for (int i = 0; i < 4; i++)
+                BGP[i] = reader.ReadInt32();
+            for (int i = 0; i < 4; i++)
+                OBP0[i] = reader.ReadInt32();
+            for (int i = 0; i < 4; i++)
+                OBP1[i] = reader.ReadInt32();
+            for (int i = 0; i < 0xA0; i++)
+                oamRam[i] = reader.ReadByte();
+            for (int i = 0; i < 0x100; i++)
+                hRam[i] = reader.ReadByte();
+            for (int i = 0; i < 0x40; i++)
+                cgbBGP[i] = reader.ReadByte();
+            for (int i = 0; i < 0x40; i++)
+                cgbOBP[i] = reader.ReadByte();
+            memory.StateLoad(reader);
+            lcd.StateLoad(reader);
+            mapper.StateLoad(reader);
+        }
+    }
+    public struct SaveState
+    {
+        public MemoryStream stateStream;
+        public bool isStored;
+        public int frame;
     }
 }

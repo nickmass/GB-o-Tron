@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.IO;
 
 namespace gb_o_tron.mappers
 {
@@ -51,6 +52,18 @@ namespace gb_o_tron.mappers
             else if (address < 0x8000) //RTC latch
             {
             }
+        }
+        public void StateSave(BinaryWriter writer)
+        {
+            writer.Write(romBank);
+            writer.Write(ramBank);
+            writer.Write(readOnly);
+        }
+        public void StateLoad(BinaryReader reader)
+        {
+            romBank = reader.ReadByte();
+            ramBank = reader.ReadByte();
+            readOnly = reader.ReadBoolean();
         }
     }
 }
