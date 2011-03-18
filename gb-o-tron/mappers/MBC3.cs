@@ -53,13 +53,13 @@ namespace gb_o_tron.mappers
             {
             }
         }
-        public void StateSave(BinaryWriter writer)
+        public override void StateSave(BinaryWriter writer)
         {
             writer.Write(romBank);
             writer.Write(ramBank);
             writer.Write(readOnly);
         }
-        public void StateLoad(BinaryReader reader)
+        public override void StateLoad(BinaryReader reader)
         {
             romBank = reader.ReadByte();
             ramBank = reader.ReadByte();

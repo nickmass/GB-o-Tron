@@ -42,7 +42,8 @@ namespace gb_o_tron
     {
         DMG,
         GBC,
-        SGB
+        SGB,
+        Smart
     }
     public class GBCore
     {
@@ -259,8 +260,6 @@ namespace gb_o_tron
         public bool DMAActive;
         public bool DMAHBlank;
 
-        bool forceClassicGB = false;
-
         byte[][] bios = new byte[3][];
         byte[][] bootBanks = new byte[3][];
         bool booted = false;
@@ -278,9 +277,9 @@ namespace gb_o_tron
                 if(titleChar != '\0')
                     rom.title += titleChar;
             }
-            rom.cgbMode = (image.ReadByte() & 0x80) != 0 && !forceClassicGB;
+            rom.cgbMode = (image.ReadByte() & 0x80) != 0;
             rom.newLicense = ((char)image.ReadByte()).ToString() + ((char)image.ReadByte()).ToString();
-            rom.SGB = image.ReadByte() == 0x03 && !forceClassicGB;
+            rom.SGB = image.ReadByte() == 0x03;
             rom.cartType = (byte)image.ReadByte();
             int romSize = image.ReadByte();
             switch(romSize)
@@ -390,6 +389,10 @@ namespace gb_o_tron
             }
             switch (this.systemType)
             {
+                case SystemType.SGB:
+                    rom.cgbMode = false;
+                    sgb = new SGB(this);
+                    break;
                 case SystemType.DMG:
                     rom.cgbMode = false;
                     rom.SGB = false;
@@ -397,54 +400,73 @@ namespace gb_o_tron
                 case SystemType.GBC:
                     rom.SGB = false;
                     break;
-                case SystemType.SGB:
-                    if(rom.SGB)
+                case SystemType.Smart:
+                    if (rom.SGB)
+                    {
+                        this.systemType = SystemType.SGB;
                         rom.cgbMode = false;
+                        sgb = new SGB(this);
+                    }
+                    else if (rom.cgbMode)
+                    {
+                        this.systemType = SystemType.GBC;
+                        rom.SGB = false;
+                    }
+                    else
+                    {
+                        this.systemType = SystemType.DMG;
+                        rom.cgbMode = false;
+                        rom.SGB = false;
+                    }
                     break;
             }
             lcd = new LCD(this);
-            if (rom.SGB)
-            {
-                sgb = new SGB(this);
-                rom.cgbMode = false;
-            }
-            if (rom.cgbMode)
-                LoadBios();
-            else
-                Power();
+            LoadBios();
         }
         public void LoadBios()
         {
-            mapper.Power();
             System.Reflection.Assembly thisExe;
             thisExe = System.Reflection.Assembly.GetExecutingAssembly();
-            Stream biosStream = thisExe.GetManifestResourceStream("gb_o_tron.gbc_bios.bin");
-            bios[0] = new byte[0x400];
-            bios[1] = new byte[0x400];
-            bios[2] = new byte[0x400];
-            bootBanks[0] = new byte[0x400];
-            bootBanks[1] = new byte[0x400];
-            bootBanks[2] = new byte[0x400];
-            for (int i = 0x00; i < 0x900; i++)
-                bios[(i / 0x400)][i % 0x400] = (byte)biosStream.ReadByte();
-            for (int i = 0x00; i < 0x100; i++)
-                bios[0][0x100 + i] = memory.banks[memory.swapOffset][0x100 + i];
-            for (int i = 0x00; i < 0xC00; i++)
-                bootBanks[(i / 0x400)][i % 0x400] = memory.banks[memory.swapOffset + (i / 0x400)][i % 0x400];
-            memory.banks[memory.swapOffset] = bios[0];
-            memory.banks[memory.swapOffset + 1] = bios[1];
-            memory.banks[memory.swapOffset + 2] = bios[2];
-        }
-        public void Boot()
-        {
-            for (int i = 0x00; i < memory.wramSwapOffset * 0x400; i++)
+            if (systemType == SystemType.GBC)
             {
-                memory.banks[(i / 0x400)][i % 0x400] = 0; //pokemon yellow work around
+                rom.cgbMode = true; //Bios is always run as if it were a CGB cart, it the determines the carts features and then sets CGB flag with reg FF4C.
+                mapper.Power();
+                Stream biosStream = thisExe.GetManifestResourceStream("gb_o_tron.gbc_bios.bin");
+                bios[0] = new byte[0x400];
+                bios[1] = new byte[0x400];
+                bios[2] = new byte[0x400];
+                bootBanks[0] = new byte[0x400];
+                bootBanks[1] = new byte[0x400];
+                bootBanks[2] = new byte[0x400];
+                for (int i = 0x00; i < 0x900; i++)
+                    bios[(i / 0x400)][i % 0x400] = (byte)biosStream.ReadByte();
+                for (int i = 0x00; i < 0x100; i++)
+                    bios[0][0x100 + i] = memory.banks[memory.swapOffset][0x100 + i];
+                for (int i = 0x00; i < 0xC00; i++)
+                    bootBanks[(i / 0x400)][i % 0x400] = memory.banks[memory.swapOffset + (i / 0x400)][i % 0x400];
+                memory.banks[memory.swapOffset] = bios[0];
+                memory.banks[memory.swapOffset + 1] = bios[1];
+                memory.banks[memory.swapOffset + 2] = bios[2];
             }
-            memory.banks[memory.swapOffset] = bootBanks[0];
-            memory.banks[memory.swapOffset + 1] = bootBanks[1];
-            memory.banks[memory.swapOffset + 2] = bootBanks[2];
-            booted = true;
+            else
+            {
+                string biosPath;
+                if (systemType == SystemType.SGB)
+                    biosPath = "gb_o_tron.sgb_bios.bin";
+                else
+                    biosPath = "gb_o_tron.dmg_bios.bin";
+                mapper.Power();
+                Stream biosStream = thisExe.GetManifestResourceStream(biosPath);
+                bios[0] = new byte[0x400];
+                bootBanks[0] = new byte[0x400];
+                for (int i = 0x00; i < 0x100; i++)
+                    bios[0][i] = (byte)biosStream.ReadByte();
+                for (int i = 0x100; i < 0x300; i++)
+                    bios[0][i] = memory.banks[memory.swapOffset][i];
+                for (int i = 0x00; i < 0x400; i++)
+                    bootBanks[0][i] = memory.banks[memory.swapOffset][i];
+                memory.banks[memory.swapOffset] = bios[0];
+            }
         }
         public void Power()
         {
@@ -478,14 +500,6 @@ namespace gb_o_tron
                 #region cpu
                 if (!halted)
                 {
-                    //if (regPC == 0xC000)
-                    //    cycles = -1000;
-                    //if(cycles < 0)
-                    //    serialData += regPC.ToString("X4") + " ";
-                    if (!booted && regPC == 0x100)
-                    {
-                        Boot();
-                    }
                     opCode = Read();
                     opCycles = 0;
                     switch (opCode)
@@ -1916,7 +1930,7 @@ namespace gb_o_tron
                             nextByte |= 0x10;
                         if (!selectButtons)
                             nextByte |= 0x20;
-                        if (rom.SGB)
+                        if (rom.SGB && systemType == SystemType.SGB)
                         {
                             if (sgb.Read() != 0xF) //Only support 1 player so far
                                 nextByte |= 0x0F;
@@ -1959,30 +1973,30 @@ namespace gb_o_tron
                         nextByte = LY;
                         break;
                     case 0xFF4D://KEY1 - CGB Mode Only - Prepare Speed Switch
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                         {
                             nextByte |= (byte)(pendingSpeedChange ? 1 : 0);
                             nextByte |= (byte)(cpuClock != NORMALSPEED ? 0x80 : 0);
                         }
                         break;
                     case 0xFF51://HDMA1 - CGB Mode Only - New DMA Source, High
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                             nextByte = (byte)(DMASourceAddress >> 8);
                         break;
                     case 0xFF52://HDMA2 - CGB Mode Only - New DMA Source, Low
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                             nextByte = (byte)(DMASourceAddress & 0xFF);
                         break;
                     case 0xFF53://HDMA3 - CGB Mode Only - New DMA Destination, High
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                             nextByte = (byte)(DMADstAddress >> 8);
                         break;
                     case 0xFF54://HDMA4 - CGB Mode Only - New DMA Destination, Low
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                             nextByte = (byte)(DMADstAddress & 0xFF);
                         break;
                     case 0xFF55://HDMA5 - CGB Mode Only - New DMA Length/Mode/Start
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                         {
                             if (!DMAActive)
                                 nextByte = 0xFF;
@@ -1996,7 +2010,7 @@ namespace gb_o_tron
                         }
                         break;
                     case 0xFF68://BCPS/BGPI - CGB Mode Only - Background Palette Index
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                         {
                             nextByte = (byte)(cgbBGPIndex & 0x3F);
                             nextByte |= (byte)(cgbBGPAuto ? 0x80 : 0x00);
@@ -2004,13 +2018,13 @@ namespace gb_o_tron
                         }
                         break;
                     case 0xFF69://BCPD/BGPD - CGB Mode Only - Background Palette Data
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                         {
                             nextByte = cgbBGP[cgbBGPIndex];
                         }
                         break;
                     case 0xFF6A://OCPS/OBPI - CGB Mode Only - Sprite Palette Index
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                         {
                             nextByte = (byte)(cgbOBPIndex & 0x3F);
                             nextByte |= (byte)(cgbOBPAuto ? 0x80 : 0x00);
@@ -2018,13 +2032,13 @@ namespace gb_o_tron
                         }
                         break;
                     case 0xFF6B://OCPD/OBPD - CGB Mode Only - Sprite Palette Data
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                         {
                             nextByte = cgbOBP[cgbOBPIndex];
                         }
                         break;
                     case 0xFF70://SVBK - CGB Mode Only - WRAM Bank
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                         {
                             nextByte = (byte)(wramBank & 0xFF);
                         }
@@ -2080,8 +2094,10 @@ namespace gb_o_tron
                     case 0xFF00://P1/JOYP - Joypad (R/W)
                         selectButtons = (value & 0x20) == 0;
                         selectDirections = (value & 0x10) == 0;
-                        if (rom.SGB)
+                        if (rom.SGB && booted && systemType == SystemType.SGB)
+                        {
                             sgb.Write(value);
+                        }
                         break;
                     case 0xFF01://SB - Serial transfer data (R/W)
                         serialByte = (byte)(value & 0xFF);
@@ -2179,32 +2195,60 @@ namespace gb_o_tron
                     case 0xFF4B://WX - Window X Position (R/W)
                         WX = (byte)(value & 0xFF);
                         break;
+                    case 0xFF4C://Possible disable/enable CGB regs
+                        break;
                     case 0xFF4D://KEY1 - CGB Mode Only - Prepare Speed Switch
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                             pendingSpeedChange = (value & 1) != 0;
                         break;
                     case 0xFF4F://VBK - CGB Mode Only - VRAM Bank
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                             memory.SwapVRAM(value & 1);
                         break;
+                    case 0xFF50://Swap out Bios
+                        if (!booted)
+                        {
+                            if (systemType == SystemType.GBC)
+                            {
+                                lcd.CopyCGBColors();
+                                memory.banks[memory.swapOffset] = bootBanks[0];
+                                memory.banks[memory.swapOffset + 1] = bootBanks[1];
+                                memory.banks[memory.swapOffset + 2] = bootBanks[2];
+                                if (systemType == SystemType.GBC && !booted)
+                                {
+                                    if (hRam[0x4C] == 0x04)
+                                        rom.cgbMode = false;
+                                    else if (hRam[0x4C] == 0x80 || hRam[0x4C] == 0xC0)
+                                        rom.cgbMode = true;
+                                    else
+                                        rom.cgbMode = true;
+                                }
+                            }
+                            else
+                            {
+                                memory.banks[memory.swapOffset] = bootBanks[0];
+                            }
+                            booted = true;
+                        }
+                        break;
                     case 0xFF51://HDMA1 - CGB Mode Only - New DMA Source, High
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                             DMASourceAddress = (DMASourceAddress & 0xFF) | (value << 8);
                         break;
                     case 0xFF52://HDMA2 - CGB Mode Only - New DMA Source, Low
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                             DMASourceAddress = (DMASourceAddress & 0xFF00) | (value & 0xF0);
                         break;
                     case 0xFF53://HDMA3 - CGB Mode Only - New DMA Destination, High
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                             DMADstAddress = (DMADstAddress & 0xFF) | (((value & 0x1F) | 0x80) << 8);
                         break;
                     case 0xFF54://HDMA4 - CGB Mode Only - New DMA Destination, Low
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                             DMADstAddress = (DMADstAddress & 0xFF00) | (value & 0xF0);
                         break;
                     case 0xFF55://HDMA5 - CGB Mode Only - New DMA Length/Mode/Start
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                         {
                             DMAActive = true;
                             DMAHBlank = (value & 0x80) != 0;
@@ -2223,14 +2267,14 @@ namespace gb_o_tron
                         }
                         break;
                     case 0xFF68://BCPS/BGPI - CGB Mode Only - Background Palette Index
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                         {
                             cgbBGPIndex = value & 0x3F;
                             cgbBGPAuto = (value & 0x80) != 0;
                         }
                         break;
                     case 0xFF69://BCPD/BGPD - CGB Mode Only - Background Palette Data
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                         {
                             cgbBGP[cgbBGPIndex] = (byte)(value & 0xFF);
                             if (cgbBGPAuto)
@@ -2239,14 +2283,14 @@ namespace gb_o_tron
                         }
                         break;
                     case 0xFF6A://OCPS/OBPI - CGB Mode Only - Sprite Palette Index
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                         {
                             cgbOBPIndex = value & 0x3F;
                             cgbOBPAuto = (value & 0x80) != 0;
                         }
                         break;
                     case 0xFF6B://OCPD/OBPD - CGB Mode Only - Sprite Palette Data
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                         {
                             cgbOBP[cgbOBPIndex ] = (byte)(value & 0xFF);
                             if (cgbOBPAuto)
@@ -2255,7 +2299,7 @@ namespace gb_o_tron
                         }
                         break;
                     case 0xFF70://SVBK - CGB Mode Only - WRAM Bank
-                        if (rom.cgbMode)
+                        if (rom.cgbMode && systemType == SystemType.GBC)
                         {
                             wramBank = value & 7;
                             memory.SwapWRAM(wramBank);
@@ -2267,6 +2311,8 @@ namespace gb_o_tron
                         InterTimerEnabled = (value & 4) != 0;
                         InterSerialEnabled = (value & 8) != 0;
                         InterJoypadEnabled = (value & 0x10) != 0;
+                        break;
+                    default:
                         break;
                 }
                 hRam[address & 0xFF] = (byte)(value & 0xFF);

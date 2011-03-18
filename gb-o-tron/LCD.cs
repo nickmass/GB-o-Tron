@@ -20,9 +20,11 @@ namespace gb_o_tron
         private uint[][] obpPal;
 
         private int[] Flip = { 14, 10, 6, 2, -2, -6, -10, -14 };
-        public uint alpha = 0x3F000000;
+        public uint alpha = 0xFF000000;
 
-        private uint[] grayPal;
+        public uint[] grayBGP;
+        public uint[] grayOBP0;
+        public uint[] grayOBP1;
 
         public LCD(GBCore gb)
         {
@@ -34,7 +36,9 @@ namespace gb_o_tron
                 bgPal[i] = new uint[4];
                 obpPal[i] = new uint[4];
             }
-            grayPal = new uint[] { alpha | 0x00FFFFFF, alpha | 0x00AAAAAA, alpha | 0x00555555, alpha | 0x00000000 };
+            grayBGP = new uint[] { alpha | 0x00FFFFFF, alpha | 0x00AAAAAA, alpha | 0x00555555, alpha | 0x00000000 };
+            grayOBP0 = new uint[] { alpha | 0x00FFFFFF, alpha | 0x00AAAAAA, alpha | 0x00555555, alpha | 0x00000000 };
+            grayOBP1 = new uint[] { alpha | 0x00FFFFFF, alpha | 0x00AAAAAA, alpha | 0x00555555, alpha | 0x00000000 };
         }
         
         public void DrawScanline()
@@ -226,6 +230,15 @@ namespace gb_o_tron
                 }
             }
         }
+        public void CopyCGBColors()
+        {
+            for (int col = 0; col < 4; col++)
+            {
+                grayBGP[col] = bgPal[0][col];
+                grayOBP0[col] = obpPal[0][col];
+                grayOBP1[col] = obpPal[1][col];
+            }
+        }
         public void UpdatePalette(bool cgb)
         {
             if (cgb)
@@ -254,9 +267,9 @@ namespace gb_o_tron
                 {
                     for (int col = 0; col < 4; col++)
                     {
-                        bgPal[0][col] = grayPal[gb.BGP[col]];
-                        obpPal[0][col] = grayPal[gb.OBP0[col]];
-                        obpPal[1][col] = grayPal[gb.OBP1[col]];
+                        bgPal[0][col] = grayBGP[gb.BGP[col]];
+                        obpPal[0][col] = grayOBP0[gb.OBP0[col]];
+                        obpPal[1][col] = grayOBP1[gb.OBP1[col]];
                     }
                 }
             }

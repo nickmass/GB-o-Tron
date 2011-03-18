@@ -171,7 +171,7 @@ namespace gb_o_tron
                 game.Abort();
             if (gb != null && gb.rom.battery)
                 File.WriteAllBytes(savFile, gb.GetRam());
-            gb = new GBCore(File.OpenRead(file), superGameboyToolStripMenuItem.Checked ? SystemType.SGB : SystemType.GBC);
+            gb = new GBCore(File.OpenRead(file), systemType);
             savFile = Path.Combine(appPath, "sav\\" + Path.GetFileName(file) + ".sav");
             if (gb.rom.battery && File.Exists(savFile))
                 gb.SetRam(File.ReadAllBytes(savFile));
@@ -291,6 +291,45 @@ namespace gb_o_tron
         {
             if (e.Data.GetDataPresent(DataFormats.FileDrop, false) == true)
                 e.Effect = DragDropEffects.All;
+        }
+        SystemType systemType = SystemType.Smart;
+        private void superGameboyToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            systemType = SystemType.SGB;
+            superGameboyToolStripMenuItem.Checked = true;
+            classicGameboyToolStripMenuItem.Checked = false;
+            gameboyColorToolStripMenuItem.Checked = false;
+            smartSelectionToolStripMenuItem.Checked = false;
+        }
+
+        private void classicGameboyToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            systemType = SystemType.DMG;
+            superGameboyToolStripMenuItem.Checked = false;
+            classicGameboyToolStripMenuItem.Checked = true;
+            gameboyColorToolStripMenuItem.Checked = false;
+            smartSelectionToolStripMenuItem.Checked = false;
+
+        }
+
+        private void gameboyColorToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            systemType = SystemType.GBC;
+            superGameboyToolStripMenuItem.Checked = false;
+            classicGameboyToolStripMenuItem.Checked = false;
+            gameboyColorToolStripMenuItem.Checked = true;
+            smartSelectionToolStripMenuItem.Checked = false;
+
+        }
+
+        private void smartSelectionToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            systemType = SystemType.Smart;
+            superGameboyToolStripMenuItem.Checked = false;
+            classicGameboyToolStripMenuItem.Checked = false;
+            gameboyColorToolStripMenuItem.Checked = false;
+            smartSelectionToolStripMenuItem.Checked = true;
+
         }
 
     }

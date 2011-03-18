@@ -114,14 +114,14 @@ namespace gb_o_tron.mappers
                 gb.memory.Swap16kROM(0x4000, (romBank | (ramBank << 5)) % (gb.rom.romSize / 16));
             }
         }
-        public void StateSave(BinaryWriter writer)
+        public override void StateSave(BinaryWriter writer)
         {
             writer.Write(ramMode);
             writer.Write(romBank);
             writer.Write(ramBank);
             writer.Write(readOnly);
         }
-        public void StateLoad(BinaryReader reader)
+        public override void StateLoad(BinaryReader reader)
         {
             ramMode = reader.ReadBoolean();
             romBank = reader.ReadByte();
