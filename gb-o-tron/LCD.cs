@@ -254,7 +254,7 @@ namespace gb_o_tron
             }
             else if(!gb.rom.cgbMode)
             {
-                if (gb.rom.SGB)
+                if (gb.rom.sgbMode)
                 {
                     for (int col = 0; col < 4; col++)
                     {
@@ -309,7 +309,7 @@ namespace gb_o_tron
                     gb.InterSTATVBlank = false;
                     gb.InterSTATOAM = true;
                     scanline = 0;
-                    if (gb.rom.SGB)
+                    if (gb.rom.sgbMode)
                         gb.sgb.Frame();
                 }
                 else if(mode != 1)

@@ -30,6 +30,8 @@ namespace gb_o_tron
         DateTime start;
         string appPath;
         string savFile;
+        bool paused;
+        int frameskip = 1;
 
         SaveState[] saveBuffer;
         int saveBufferCounter = 0;
@@ -53,84 +55,95 @@ namespace gb_o_tron
         {
             while (!closing)
             {
-                UpdateFramerate();
-                int end = DateTime.Now.Subtract(start).Milliseconds;
-                start = DateTime.Now;
-                if (end < frameRates[frameRater % 3])
-                    sleep++;
-                else if (end > frameRates[frameRater % 3] && sleep != 0)
-                    sleep--;
-                frameRater++;
+
+                if (frameskip == 1)
+                {
+                    UpdateFramerate();
+                    int end = DateTime.Now.Subtract(start).Milliseconds;
+                    start = DateTime.Now;
+                    if (end < frameRates[frameRater % 3])
+                        sleep++;
+                    else if (end > frameRates[frameRater % 3] && sleep != 0)
+                        sleep--;
+                    frameRater++;
+                }
                 frame++;
                 Text = "GB-o-Tron - " + lastFrameRate.ToString();
-                if (rewindingEnabled)
+                if (!paused)
                 {
-                    if (rewinding)
+                    if (rewindingEnabled)
                     {
-
-                        if (frame % ((saveBufferFreq == 1 ? 2 : saveBufferFreq) / 2) == 0)
+                        if (rewinding)
                         {
-                            if (saveBufferAvaliable != 0)
+
+                            if (frame % ((saveBufferFreq == 1 ? 2 : saveBufferFreq) / 2) == 0)
                             {
-                                saveBufferAvaliable--;
-                                saveBufferCounter--;
-                                if (saveBufferCounter < 0)
-                                    saveBufferCounter = ((60 / saveBufferFreq) * saveBufferSeconds) - 1;
+                                if (saveBufferAvaliable != 0)
+                                {
+                                    saveBufferAvaliable--;
+                                    saveBufferCounter--;
+                                    if (saveBufferCounter < 0)
+                                        saveBufferCounter = ((60 / saveBufferFreq) * saveBufferSeconds) - 1;
 
+                                }
+                                saveSafeRewind = true;
                             }
-                            saveSafeRewind = true;
+                            if (saveSafeRewind)
+                            {
+                                gb.StateLoad(saveBuffer[saveBufferCounter]);
+                            }
                         }
-                        if (saveSafeRewind)
+                        else
                         {
-                            gb.StateLoad(saveBuffer[saveBufferCounter]);
-                        }
-                    }
-                    else
-                    {
-                        saveSafeRewind = false;
-                        if (frame % saveBufferFreq == 0)
-                        {
-                            saveBuffer[saveBufferCounter] = gb.StateSave();
-                            saveBufferCounter++;
-                            if (saveBufferCounter >= ((60 / saveBufferFreq) * saveBufferSeconds))
-                                saveBufferCounter = 0;
-                            if (saveBufferAvaliable != ((60 / saveBufferFreq) * saveBufferSeconds))
-                                saveBufferAvaliable++;
-                        }
+                            saveSafeRewind = false;
+                            if (frame % saveBufferFreq == 0)
+                            {
+                                saveBuffer[saveBufferCounter] = gb.StateSave();
+                                saveBufferCounter++;
+                                if (saveBufferCounter >= ((60 / saveBufferFreq) * saveBufferSeconds))
+                                    saveBufferCounter = 0;
+                                if (saveBufferAvaliable != ((60 / saveBufferFreq) * saveBufferSeconds))
+                                    saveBufferAvaliable++;
+                            }
 
+                        }
                     }
-                }
-                gb.Run(player);
-                BitmapData bmd = screen.LockBits(new Rectangle(0, 0, 512, 448), ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
-                uint* pixels = (uint*)bmd.Scan0;
-                if (gb.rom.SGB)
-                {
-                    for (int imgY = 0; imgY < 288; imgY++)
-                        for (int imgX = 0; imgX < 320; imgX++)
-                            pixels[((imgY + 80) * 512) + (imgX + 96)] = gb.sgb.screen[(imgY / 2), (imgX / 2)];
-                    screen.UnlockBits(bmd);
-                    screenGfx.DrawImage(screen, new Point(0, 0));
-                    if (gb.sgb.newBorder)
+                    gb.Run(player);
+                    if (frame % frameskip == 0)
                     {
-                        bmd = screen.LockBits(new Rectangle(0, 0, 512, 448), ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
-                        pixels = (uint*)bmd.Scan0;
-                        for (int imgY = 0; imgY < 448; imgY++)
-                            for (int imgX = 0; imgX < 512; imgX++)
-                                pixels[(imgY * 512) + imgX] = gb.sgb.border[(imgY / 2), (imgX / 2)];
-                        screen.UnlockBits(bmd);
-                        screenGfx.DrawImage(screen, new Point(0, 0));
-                        gb.sgb.newBorder = false;
+                        BitmapData bmd = screen.LockBits(new Rectangle(0, 0, 512, 448), ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+                        uint* pixels = (uint*)bmd.Scan0;
+                        if (gb.rom.sgbMode)
+                        {
+                            for (int imgY = 0; imgY < 288; imgY++)
+                                for (int imgX = 0; imgX < 320; imgX++)
+                                    pixels[((imgY + 80) * 512) + (imgX + 96)] = gb.sgb.screen[(imgY / 2), (imgX / 2)];
+                            screen.UnlockBits(bmd);
+                            screenGfx.DrawImage(screen, new Point(0, 0));
+                            if (gb.sgb.newBorder)
+                            {
+                                bmd = screen.LockBits(new Rectangle(0, 0, 512, 448), ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+                                pixels = (uint*)bmd.Scan0;
+                                for (int imgY = 0; imgY < 448; imgY++)
+                                    for (int imgX = 0; imgX < 512; imgX++)
+                                        pixels[(imgY * 512) + imgX] = gb.sgb.border[(imgY / 2), (imgX / 2)];
+                                screen.UnlockBits(bmd);
+                                screenGfx.DrawImage(screen, new Point(0, 0));
+                                gb.sgb.newBorder = false;
+                            }
+                        }
+                        else
+                        {
+                            for (int imgY = 0; imgY < 288; imgY++)
+                                for (int imgX = 0; imgX < 320; imgX++)
+                                    pixels[((imgY + 80) * 512) + (imgX + 96)] = gb.lcd.screen[(imgY / 2), (imgX / 2)];
+                            screen.UnlockBits(bmd);
+                            screenGfx.DrawImage(screen, new Point(0, 0));
+                        }
                     }
                 }
-                else
-                {
-                    for (int imgY = 0; imgY < 288; imgY++)
-                        for (int imgX = 0; imgX < 320; imgX++)
-                            pixels[((imgY + 80) * 512) + (imgX + 96)] = gb.lcd.screen[(imgY / 2), (imgX / 2)];
-                    screen.UnlockBits(bmd);
-                    screenGfx.DrawImage(screen, new Point(0, 0));
-                }
-                Thread.Sleep(sleep);
+                if(frameskip == 1)
+                    Thread.Sleep(sleep);
             }
         }
         private void UpdateFramerate()
@@ -211,10 +224,16 @@ namespace gb_o_tron
                     player.start = false;
                     break;
                 case Keys.ShiftKey:
+                    frameskip = 1;
+                    break;
+                case Keys.Oem7:
                     player.select = false;
                     break;
                 case Keys.Tab:
                     rewinding = false;
+                    break;
+                case Keys.Space:
+                    paused = !paused;
                     break;
             }
 
@@ -246,6 +265,9 @@ namespace gb_o_tron
                     player.start = true;
                     break;
                 case Keys.ShiftKey:
+                    frameskip = 10;
+                    break;
+                case Keys.Oem7:
                     player.select = true;
                     break;
                 case Keys.Tab:

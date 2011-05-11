@@ -59,15 +59,28 @@ namespace gb_o_tron
         {
             if (bank == 0)
                 bank = 1;
-            memMap[0x34] = (bank * 4) + wramSwapOffset;
+
+            //Static bank on both DMG and GBC
+            memMap[0x30] = wramSwapOffset;//WRAM0
+            memMap[0x31] = wramSwapOffset + 1;
+            memMap[0x32] = wramSwapOffset + 2;
+            memMap[0x33] = wramSwapOffset + 3;
+            memMap[0x38] = memMap[0x30];//ECHO0
+            memMap[0x39] = memMap[0x31];
+            memMap[0x3A] = memMap[0x32];
+            memMap[0x3B] = memMap[0x33];
+
+            //Swapable on GBC, Static on DMG
+            memMap[0x34] = (bank * 4) + wramSwapOffset;//WRAM1
             memMap[0x35] = (bank * 4) + 1 + wramSwapOffset;
             memMap[0x36] = (bank * 4) + 2 + wramSwapOffset;
             memMap[0x37] = (bank * 4) + 3 + wramSwapOffset;
+            memMap[0x3C] = memMap[0x34];//ECHO1
+            memMap[0x3D] = memMap[0x35];
+            memMap[0x3E] = memMap[0x36];
+            memMap[0x3F] = memMap[0x37];
 
-            readOnly[0x34] = false;
-            readOnly[0x35] = false;
-            readOnly[0x36] = false;
-            readOnly[0x37] = false;
+            SetReadOnly(0xC000, 16, false);
         }
         public void SwapVRAM(int bank)
         {

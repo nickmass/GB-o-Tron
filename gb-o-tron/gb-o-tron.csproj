@@ -90,6 +90,7 @@
     </Compile>
     <Compile Include="GBCore.cs" />
     <Compile Include="LCD.cs" />
+    <Compile Include="mappers\MBC2.cs" />
     <Compile Include="mappers\MBC5.cs" />
     <Compile Include="mappers\MBC3.cs" />
     <Compile Include="mappers\MBC1.cs" />

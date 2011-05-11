@@ -24,7 +24,7 @@ namespace gb_o_tron
         public string title;
         public bool cgbMode;
         public string newLicense;
-        public bool SGB;
+        public bool sgbMode;
         public byte cartType;
         public bool RAM;
         public bool battery;
@@ -249,8 +249,6 @@ namespace gb_o_tron
         public int cgbOBPIndex;
         bool cgbOBPAuto;
 
-        int wramBank;
-
         bool pendingSpeedChange;
 
         public int DMASourceAddress;
@@ -279,7 +277,7 @@ namespace gb_o_tron
             }
             rom.cgbMode = (image.ReadByte() & 0x80) != 0;
             rom.newLicense = ((char)image.ReadByte()).ToString() + ((char)image.ReadByte()).ToString();
-            rom.SGB = image.ReadByte() == 0x03;
+            rom.sgbMode = image.ReadByte() == 0x03;
             rom.cartType = (byte)image.ReadByte();
             int romSize = image.ReadByte();
             switch(romSize)
@@ -317,28 +315,37 @@ namespace gb_o_tron
                     rom.ramSize = 32;
                     break;
             }
+            if (rom.cartType == 0x05 || rom.cartType == 0x06) //MBC internal ram weirdness workaround.
+                rom.ramSize = 1;
             rom.dst = (byte)image.ReadByte();
             rom.oldLicense = (byte)image.ReadByte();
-            rom.SGB = (rom.SGB && rom.oldLicense == 0x33);
+            rom.sgbMode = (rom.sgbMode && rom.oldLicense == 0x33);
             rom.maskRomVer = (byte)image.ReadByte();
             rom.headerChecksum = (byte)image.ReadByte();
-            rom.glocalChecksum = (ushort)(image.ReadByte() | (image.ReadByte() << 8));
+            rom.glocalChecksum = (ushort)(image.ReadByte() << 8 | (image.ReadByte()));
+            //16 Video banks
+            //32 Work ram banks
+            //romSize rom banks
+            //ramSize rambanks
             memory = new MemoryStore(48 + rom.romSize + rom.ramSize, true);
             memory.swapOffset = 48;
             memory.vramSwapOffset = 0;
             memory.wramSwapOffset = 16;
             memory.ramSwapOffset = memory.swapOffset + rom.romSize;
             memory.SwapVRAM(0);//VRAM
-            memory.memMap[0x30] = 16;//WRAM0
-            memory.memMap[0x31] = 17;
-            memory.memMap[0x32] = 18;
-            memory.memMap[0x33] = 19;
-            memory.SetReadOnly(0xC000, 4, false);
-            wramBank = 1;
-            memory.SwapWRAM(wramBank);//WRAM1
+            memory.SwapWRAM(1);//WRAM
             image.Position = 0;
+            byte headerChecksum = 0;
+            ushort romChecksum = 0;
             for (int i = 0x00; i < rom.romSize * 0x400; i++)
-                memory.banks[(i / 0x400) + memory.swapOffset][i % 0x400] = (byte)image.ReadByte();
+            {
+                byte nextByte = (byte)image.ReadByte();
+                if (i >= 0x134 && i < 0x14D)
+                    headerChecksum = (byte)((headerChecksum - nextByte - 1) & 0xFF);
+                if (i != 0x14E && i != 0x14F)
+                    romChecksum = (ushort)((romChecksum + nextByte) & 0xFFFF);
+                memory.banks[(i / 0x400) + memory.swapOffset][i % 0x400] = nextByte;
+            }
             image.Close();
             switch (rom.cartType)
             {
@@ -355,6 +362,12 @@ namespace gb_o_tron
                 case 0x02:
                 case 0x01: //MBC1
                     mapper = new MBC1(this);
+                    break;
+                case 0x06:
+                    rom.battery = true;
+                    goto case 0x05;
+                case 0x05:
+                    mapper = new MBC2(this);
                     break;
                 case 0x0F:
                 case 0x10:
@@ -395,13 +408,13 @@ namespace gb_o_tron
                     break;
                 case SystemType.DMG:
                     rom.cgbMode = false;
-                    rom.SGB = false;
+                    rom.sgbMode = false;
                     break;
                 case SystemType.GBC:
-                    rom.SGB = false;
+                    rom.sgbMode = false;
                     break;
                 case SystemType.Smart:
-                    if (rom.SGB)
+                    if (rom.sgbMode)
                     {
                         this.systemType = SystemType.SGB;
                         rom.cgbMode = false;
@@ -410,13 +423,13 @@ namespace gb_o_tron
                     else if (rom.cgbMode)
                     {
                         this.systemType = SystemType.GBC;
-                        rom.SGB = false;
+                        rom.sgbMode = false;
                     }
                     else
                     {
                         this.systemType = SystemType.DMG;
                         rom.cgbMode = false;
-                        rom.SGB = false;
+                        rom.sgbMode = false;
                     }
                     break;
             }
@@ -427,10 +440,11 @@ namespace gb_o_tron
         {
             System.Reflection.Assembly thisExe;
             thisExe = System.Reflection.Assembly.GetExecutingAssembly();
+            IME = false;
+            mapper.Power();
             if (systemType == SystemType.GBC)
             {
                 rom.cgbMode = true; //Bios is always run as if it were a CGB cart, it the determines the carts features and then sets CGB flag with reg FF4C.
-                mapper.Power();
                 Stream biosStream = thisExe.GetManifestResourceStream("gb_o_tron.gbc_bios.bin");
                 bios[0] = new byte[0x400];
                 bios[1] = new byte[0x400];
@@ -455,7 +469,6 @@ namespace gb_o_tron
                     biosPath = "gb_o_tron.sgb_bios.bin";
                 else
                     biosPath = "gb_o_tron.dmg_bios.bin";
-                mapper.Power();
                 Stream biosStream = thisExe.GetManifestResourceStream(biosPath);
                 bios[0] = new byte[0x400];
                 bootBanks[0] = new byte[0x400];
@@ -1904,10 +1917,6 @@ namespace gb_o_tron
         {
             address = address & 0xFFFF;
             byte nextByte = 0;
-            if (address >= 0xE000 && address < 0xFE00)//ECHO
-            {
-                address = address - 0x1000;
-            }
             if (address >= 0xFE00 && address < 0xFEA0)
             {
                 nextByte = oamRam[address & 0xFF];
@@ -1930,7 +1939,7 @@ namespace gb_o_tron
                             nextByte |= 0x10;
                         if (!selectButtons)
                             nextByte |= 0x20;
-                        if (rom.SGB && systemType == SystemType.SGB)
+                        if (rom.sgbMode && systemType == SystemType.SGB)
                         {
                             if (sgb.Read() != 0xF) //Only support 1 player so far
                                 nextByte |= 0x0F;
@@ -2040,7 +2049,7 @@ namespace gb_o_tron
                     case 0xFF70://SVBK - CGB Mode Only - WRAM Bank
                         if (rom.cgbMode && systemType == SystemType.GBC)
                         {
-                            nextByte = (byte)(wramBank & 0xFF);
+                            nextByte = (byte)(hRam[address & 0xFF] & 0x7);
                         }
                         break;
                     case 0xFFFF://IE - Interrupt Enable (R/W)
@@ -2062,6 +2071,7 @@ namespace gb_o_tron
             }
             else 
                 nextByte = memory[address];
+            nextByte = mapper.Read(nextByte, (ushort)address);
             return nextByte;
         }
         private byte Read()
@@ -2079,10 +2089,6 @@ namespace gb_o_tron
         private void Write(int value, int address)
         {
             address = address & 0xFFFF;
-            if (address >= 0xE000 && address < 0xFE00)//ECHO
-            {
-                address = address - 0x1000;
-            }
             if (address >= 0xFE00 && address < 0xFEA0)
             {
                 oamRam[address & 0xFF] = (byte)value;
@@ -2094,7 +2100,7 @@ namespace gb_o_tron
                     case 0xFF00://P1/JOYP - Joypad (R/W)
                         selectButtons = (value & 0x20) == 0;
                         selectDirections = (value & 0x10) == 0;
-                        if (rom.SGB && booted && systemType == SystemType.SGB)
+                        if (rom.sgbMode && booted && systemType == SystemType.SGB)
                         {
                             sgb.Write(value);
                         }
@@ -2214,15 +2220,7 @@ namespace gb_o_tron
                                 memory.banks[memory.swapOffset] = bootBanks[0];
                                 memory.banks[memory.swapOffset + 1] = bootBanks[1];
                                 memory.banks[memory.swapOffset + 2] = bootBanks[2];
-                                if (systemType == SystemType.GBC && !booted)
-                                {
-                                    if (hRam[0x4C] == 0x04)
-                                        rom.cgbMode = false;
-                                    else if (hRam[0x4C] == 0x80 || hRam[0x4C] == 0xC0)
-                                        rom.cgbMode = true;
-                                    else
-                                        rom.cgbMode = true;
-                                }
+                                rom.cgbMode = (hRam[0x4C] & 0x80) != 0;
                             }
                             else
                             {
@@ -2301,8 +2299,7 @@ namespace gb_o_tron
                     case 0xFF70://SVBK - CGB Mode Only - WRAM Bank
                         if (rom.cgbMode && systemType == SystemType.GBC)
                         {
-                            wramBank = value & 7;
-                            memory.SwapWRAM(wramBank);
+                            memory.SwapWRAM(value & 7);
                         }
                         break;
                     case 0xFFFF://IE - Interrupt Enable (R/W)
@@ -2317,7 +2314,7 @@ namespace gb_o_tron
                 }
                 hRam[address & 0xFF] = (byte)(value & 0xFF);
             }
-            else if (address < 0xE000)
+            else
             {
                 mapper.Write((byte)(value & 0xFF), (ushort)address);
                 memory[address] = (byte)(value & 0xFF);
@@ -2370,6 +2367,7 @@ namespace gb_o_tron
                 }
             }
         }
+        #region Instructions
         private int JR(int n, int reg1)
         {
             if ((n & 0x80) != 0)
@@ -2573,6 +2571,7 @@ namespace gb_o_tron
         {
             return (reg1 | bit);
         }
+#endregion
         public byte[] GetRam()
         {
             byte[] sram = new byte[rom.ramSize * 1024];
@@ -2644,7 +2643,6 @@ namespace gb_o_tron
             writer.Write(cgbBGPAuto);
             writer.Write(cgbOBPIndex);
             writer.Write(cgbOBPAuto);
-            writer.Write(wramBank);
             writer.Write(pendingSpeedChange);
             writer.Write(DMASourceAddress);
             writer.Write(DMADstAddress);
@@ -2729,7 +2727,6 @@ namespace gb_o_tron
             cgbBGPAuto = reader.ReadBoolean();
             cgbOBPIndex = reader.ReadInt32();
             cgbOBPAuto = reader.ReadBoolean();
-            wramBank = reader.ReadInt32();
             pendingSpeedChange = reader.ReadBoolean();
             DMASourceAddress = reader.ReadInt32();
             DMADstAddress = reader.ReadInt32();
