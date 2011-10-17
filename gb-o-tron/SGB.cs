@@ -352,7 +352,7 @@ namespace gb_o_tron
                             sgbPalettes[i][j] = sgbSystemPalettes[(palette * 4) + j];
                     }
                     for (int i = 0; i < 4; i++)
-                        sgbPalettes[i][0] = sgbPalettes[3][0];
+                        sgbPalettes[i][0] = sgbPalettes[0][0];//has to be set to palette 0,0 for kirbys dreamland 2
                     if ((stream[8] & 0x80) != 0)
                     {
                         if ((stream[8] & 0x3F) < 0x2D)
@@ -547,10 +547,15 @@ namespace gb_o_tron
                             for (int x = xStart; x != xEnd; x += xDirection)
                             {
                                 int color = (aChr & 1) | (bChr & 2) | (cChr & 4) | (dChr & 8);
-                                //if (color == 0)
-                                //    border[(tileY * 8) + line, (tileX * 8) + x] = 0x00000000;
-                                //else
-                                    border[(tileY * 8) + vertFlipper, (tileX * 8) + x] = palettes[palette][color] & 0x3FFFFFFF;
+                                if (color == 0 && ((tileX >= 6 && tileX < 26) && (tileY >= 5 && tileY < 23))) //Super Snakey border overlap uses color 0 as transparent on title screen
+                                    border[(tileY * 8) + line, (tileX * 8) + x] = 0x00000000;
+                                else
+                                {
+                                    if (color == 0)
+                                        border[(tileY * 8) + vertFlipper, (tileX * 8) + x] = sgbToRgb32(0xFFFF) & 0xFFFFFFFF;
+                                    else
+                                        border[(tileY * 8) + vertFlipper, (tileX * 8) + x] = palettes[palette][color] & 0xFFFFFFFF;
+                                }
                                 aChr >>= 1;
                                 bChr >>= 1;
                                 cChr >>= 1;
@@ -562,8 +567,8 @@ namespace gb_o_tron
                     else
                     {
                         uint color;
-                        if (!((tileY > 4 && tileY < 23) && (tileX > 5 && tileX < 26)))
-                            color = sgbToRgb32(0xFFFF) & 0x3FFFFFFF;
+                        if (!((tileX >= 6 && tileX < 26) && (tileY >= 5 && tileY < 23)))
+                            color = sgbToRgb32(0xFFFF) & 0xFFFFFFFF;
                         else
                             color = 0x00000000;
                         for (int line = 0; line < 8; line++)

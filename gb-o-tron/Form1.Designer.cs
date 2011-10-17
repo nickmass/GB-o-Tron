@@ -34,11 +34,11 @@
             this.panel1 = new System.Windows.Forms.Panel();
             this.contextMenuStrip1 = new System.Windows.Forms.ContextMenuStrip(this.components);
             this.openToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.superGameboyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.exitToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.classicGameboyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.superGameboyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.gameboyColorToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.smartSelectionToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.exitToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.contextMenuStrip1.SuspendLayout();
             this.SuspendLayout();
             // 
@@ -77,26 +77,19 @@
             this.openToolStripMenuItem.Text = "Open ROM";
             this.openToolStripMenuItem.Click += new System.EventHandler(this.openToolStripMenuItem_Click);
             // 
-            // superGameboyToolStripMenuItem
-            // 
-            this.superGameboyToolStripMenuItem.Name = "superGameboyToolStripMenuItem";
-            this.superGameboyToolStripMenuItem.Size = new System.Drawing.Size(164, 22);
-            this.superGameboyToolStripMenuItem.Text = "Super Gameboy";
-            this.superGameboyToolStripMenuItem.Click += new System.EventHandler(this.superGameboyToolStripMenuItem_Click);
-            // 
-            // exitToolStripMenuItem
-            // 
-            this.exitToolStripMenuItem.Name = "exitToolStripMenuItem";
-            this.exitToolStripMenuItem.Size = new System.Drawing.Size(164, 22);
-            this.exitToolStripMenuItem.Text = "Exit";
-            this.exitToolStripMenuItem.Click += new System.EventHandler(this.exitToolStripMenuItem_Click);
-            // 
             // classicGameboyToolStripMenuItem
             // 
             this.classicGameboyToolStripMenuItem.Name = "classicGameboyToolStripMenuItem";
             this.classicGameboyToolStripMenuItem.Size = new System.Drawing.Size(164, 22);
             this.classicGameboyToolStripMenuItem.Text = "Classic Gameboy";
             this.classicGameboyToolStripMenuItem.Click += new System.EventHandler(this.classicGameboyToolStripMenuItem_Click);
+            // 
+            // superGameboyToolStripMenuItem
+            // 
+            this.superGameboyToolStripMenuItem.Name = "superGameboyToolStripMenuItem";
+            this.superGameboyToolStripMenuItem.Size = new System.Drawing.Size(164, 22);
+            this.superGameboyToolStripMenuItem.Text = "Super Gameboy";
+            this.superGameboyToolStripMenuItem.Click += new System.EventHandler(this.superGameboyToolStripMenuItem_Click);
             // 
             // gameboyColorToolStripMenuItem
             // 
@@ -113,6 +106,13 @@
             this.smartSelectionToolStripMenuItem.Size = new System.Drawing.Size(164, 22);
             this.smartSelectionToolStripMenuItem.Text = "Smart Selection";
             this.smartSelectionToolStripMenuItem.Click += new System.EventHandler(this.smartSelectionToolStripMenuItem_Click);
+            // 
+            // exitToolStripMenuItem
+            // 
+            this.exitToolStripMenuItem.Name = "exitToolStripMenuItem";
+            this.exitToolStripMenuItem.Size = new System.Drawing.Size(164, 22);
+            this.exitToolStripMenuItem.Text = "Exit";
+            this.exitToolStripMenuItem.Click += new System.EventHandler(this.exitToolStripMenuItem_Click);
             // 
             // Form1
             // 

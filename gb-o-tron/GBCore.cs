@@ -213,6 +213,7 @@ namespace gb_o_tron
         public mappers.Mapper mapper;
         public LCD lcd;
         public SGB sgb;
+        public Audio audio;
 
         byte serialByte;
         public string serialData;
@@ -261,6 +262,62 @@ namespace gb_o_tron
         byte[][] bios = new byte[3][];
         byte[][] bootBanks = new byte[3][];
         bool booted = false;
+
+        public bool square1SweepEnabled;
+        public int square1SweepFreq;
+        public bool square1SweepDirection;
+        public int square1SweepShift;
+        public int square1DutyCycle;
+        public int square1Length;
+        public int square1Volume;
+        public bool square1EnvelopeEnabled;
+        public bool square1EnvelopeDirection;
+        public int square1EnvelopeFreq;
+        public int square1Timer;
+        public int square1Freq;
+        public bool square1Loop;
+        public bool square1Reset;
+
+        public int square2DutyCycle;
+        public int square2Length;
+        public int square2Volume;
+        public bool square2EnvelopeEnabled;
+        public bool square2EnvelopeDirection;
+        public int square2EnvelopeFreq;
+        public int square2Timer;
+        public int square2Freq;
+        public bool square2Loop;
+        public bool square2Reset;
+
+        public bool wavEnabled;
+        public int wavLength;
+        public int wavVolumeShift;
+        public int wavTimer;
+        public int wavFreq;
+        public bool wavLoop;
+        public bool wavReset;
+
+        public int noiseLength;
+        public int noiseVolume;
+        public bool noiseEnvelopeEnabled;
+        public bool noiseEnvelopeDirection;
+        public int noiseEnvelopeFreq;
+        public int noiseShiftFreq;
+        public bool noiseShiftWidth;//0 - 15bit, 1 - 7bit
+        public bool noiseLoop;
+        public bool noiseReset;
+        public int[] noiseDivisors = new int[] { 8, 16, 32, 48, 64, 80, 96, 112 };
+
+        public bool square1Left;
+        public bool square2Left;
+        public bool wavLeft;
+        public bool noiseLeft;
+        public bool square1Right;
+        public bool square2Right;
+        public bool wavRight;
+        public bool noiseRight;
+
+        public bool soundEnabled;
 
         SystemType systemType;
 
@@ -392,6 +449,7 @@ namespace gb_o_tron
                 case 0x1D:
                     rom.rumble = true;
                     goto case 0x19;
+                case 0x1A:
                 case 0x19://MBC5
                     mapper = new MBC5(this);
                     break;
@@ -434,6 +492,8 @@ namespace gb_o_tron
                     break;
             }
             lcd = new LCD(this);
+            audio = new Audio(this, 44100);
+            ResetSound();
             LoadBios();
         }
         public void LoadBios()
@@ -499,7 +559,7 @@ namespace gb_o_tron
         }
         public void Run(Input player)
         {
-            if ((player.a && !input.a) || (player.b && !input.b) || (player.up && !input.up) || (player.down && !input.down) || (player.left && !input.left) || (player.right && !input.right) || (player.select && !input.select) || (player.start && !input.start))
+            if ((((player.a && !input.a) || (player.b && !input.b) || (player.select && !input.select) || (player.start && !input.start)) && (selectButtons || halted)) || (((player.up && !input.up) || (player.down && !input.down) || (player.left && !input.left) || (player.right && !input.right)) && (selectDirections || halted)))
             {
                 InterJoypad = true;
             }
@@ -508,6 +568,7 @@ namespace gb_o_tron
             int tmp;
             int otherTmp;
             emulating = true;
+            audio.ResetBuffers();
             while (emulating)
             {
                 #region cpu
@@ -1846,20 +1907,21 @@ namespace gb_o_tron
                 }
 #endregion cpu
                 lcd.AddCycles(opCycles >> (cpuClock == CGBSPEED ? 1 : 0));
+                audio.AddCycles(opCycles >> (cpuClock == CGBSPEED ? 1 : 0));
                 TimerClock(opCycles);
                 DividerClock(opCycles);
-                if (InterVBlank || InterLCDSTAT || InterTimer || InterSerial || InterJoypad) //I can't figure out if IME needs to be true for halt to stop : /. but this passes Blargg.
+                if ((InterVBlank) || (InterLCDSTAT) || InterTimer || InterSerial || InterJoypad) //I can't figure out if IME needs to be true for halt to stop : /. but this passes Blargg.
                     halted = false;
                 if (IME)
                 {
-                    if (InterVBlank && InterVBlankEnabled)
+                    if (InterVBlank && InterVBlankEnabled && (LCDC & 0x80) != 0)
                     {
                         InterVBlank = false;
                         IME = false;
                         PushWordStack(regPC);
                         regPC = 0x40;
                     }
-                    else if (InterLCDSTAT && InterLCDSTATEnabled)
+                    else if (InterLCDSTAT && InterLCDSTATEnabled && (LCDC & 0x80) != 0)
                     {
                         InterLCDSTAT = false;
                         IME = false;
@@ -1952,6 +2014,9 @@ namespace gb_o_tron
                     case 0xFF04://DIV - Divider Register (R/W)
                         nextByte = divider;
                         break;
+                    case 0xFF05://TIMA - Timer counter (R/W)
+                        nextByte = timer;
+                        break;
                     case 0xFF06://TMA - Timer Modulo (R/W)
                         nextByte = timerReload;
                         break;
@@ -1969,6 +2034,14 @@ namespace gb_o_tron
                             nextByte |= 8;
                         if (InterJoypad)
                             nextByte |= 0x10;
+                        break;
+                    case 0xFF26: //NR52 - Sound on/off
+                        nextByte = 0;
+                        nextByte |= (byte)(soundEnabled ? 0x80 : 0);
+                        nextByte |= (byte)(audio.noiseLengthCounter != 0 ? 0x08 : 0);
+                        nextByte |= (byte)(audio.wavLengthCounter != 0 ? 0x04 : 0);
+                        nextByte |= (byte)(audio.square2LengthCounter != 0 ? 0x02 : 0);
+                        nextByte |= (byte)(audio.square1LengthCounter != 0 ? 0x01 : 0);
                         break;
                     case 0xFF41://STAT - LCDC Status (R/W)
                         nextByte |= lcd.mode;
@@ -2141,16 +2214,175 @@ namespace gb_o_tron
                         }
                         break;
                     case 0xFF0F://IF - Interrupt Flag (R/W)
-                        InterVBlank = (value & 1) != 0;
-                        InterLCDSTAT = (value & 2) != 0;
+                        InterVBlank = (value & 1) != 0 && (LCDC & 0x80) != 0;
+                        InterLCDSTAT = (value & 2) != 0 && (LCDC & 0x80) != 0;
                         InterTimer = (value & 4) != 0;
                         InterSerial = (value & 8) != 0;
                         InterJoypad = (value & 0x10) != 0;
                         break;
+                    case 0xFF10://NR10 - Channel 1 Sweep register (R/W)
+                        if (!soundEnabled)
+                            break;
+                        square1SweepEnabled = ((value >> 4) & 7) != 0;
+                        square1SweepFreq = (value >> 4) & 7;
+                        square1SweepDirection = (value & 8) == 0;
+                        square1SweepShift = value & 7;
+                        break;
+                    case 0xFF11://NR11 - Channel 1 Sound length/Wave pattern duty (R/W)
+                        if (!soundEnabled)
+                            break;
+                        square1DutyCycle = (value >> 6) & 3;
+                        square1Length = 64-(value & 0x3F);
+                        break;
+                    case 0xFF12://NR12 - Channel 1 Volume Envelope (R/W)
+                        if (!soundEnabled)
+                            break;
+                        square1Volume = (value >> 4) & 0xF;
+                        square1EnvelopeDirection = (value & 0x8) != 0;
+                        square1EnvelopeFreq = value & 7;
+                        square1EnvelopeEnabled = (value & 7) != 0;
+                        break;
+                    case 0xFF13://NR13 - Channel 1 Frequency lo (Write Only)
+                        if (!soundEnabled)
+                            break;
+                        square1Timer = (square1Timer & 0x700) | value;
+                        square1Freq = (2048 - square1Timer) * 4;
+                        break;
+                    case 0xFF14://NR14 - Channel 1 Frequency hi (R/W)
+                        if (!soundEnabled)
+                            break;
+                        square1Reset = (value & 0x80) != 0;
+                        square1Loop = (value & 0x40) == 0;
+                        square1Timer = (square1Timer & 0x0FF) | ((value & 7) << 8);
+                        square1Freq = (2048 - square1Timer) * 4;
+                        break;
+                    case 0xFF16://NR21 - Channel 2 Sound length/Wave pattern duty (R/W)
+                        if (!soundEnabled)
+                            break;
+                        square2DutyCycle = (value >> 6) & 3;
+                        square2Length = 64 - (value & 0x3F);
+                        break;
+                    case 0xFF17://NR22 - Channel 2 Volume Envelope (R/W)
+                        if (!soundEnabled)
+                            break;
+                        square2Volume = (value >> 4) & 0xF;
+                        square2EnvelopeDirection = (value & 0x8) != 0;
+                        square2EnvelopeFreq = value & 7;
+                        square2EnvelopeEnabled = (value & 7) != 0;
+                        break;
+                    case 0xFF18://NR23 - Channel 2 Frequency lo (Write Only)
+                        if (!soundEnabled)
+                            break;
+                        square2Timer = (square2Timer & 0x700) | value;
+                        square2Freq = (2048 - square2Timer) * 4;
+                        break;
+                    case 0xFF19://NR24 - Channel 2 Frequency hi (R/W)
+                        if (!soundEnabled)
+                            break;
+                        square2Reset = (value & 0x80) != 0;
+                        square2Loop = (value & 0x40) == 0;
+                        square2Timer = (square2Timer & 0x0FF) | ((value & 7) << 8);
+                        square2Freq = (2048 - square2Timer) * 4;
+                        break;
+                    case 0xFF1A://NR30 - Channel 3 Sound on/off (R/W)
+                        if (!soundEnabled)
+                            break;
+                        wavEnabled = (value & 0x80) != 0;
+                        break;
+                    case 0xFF1B://NR31 - Channel 3 Sound Length
+                        if (!soundEnabled)
+                            break;
+                        wavLength = 256 - value;
+                        break;
+                    case 0xFF1C://NR32 - Channel 3 Select output level (R/W)
+                        if (!soundEnabled)
+                            break;
+                        switch ((value >> 4) & 0x3)
+                        {
+                            case 0:
+                                wavVolumeShift = 8;
+                                break;
+                            case 1:
+                                wavVolumeShift = 0;
+                                break;
+                            case 2:
+                                wavVolumeShift = 1;
+                                break;
+                            case 3:
+                                wavVolumeShift = 2;
+                                break;
+                        }
+                        break;
+                    case 0xFF1D://NR33 - Channel 3 Frequency's lower data (W)
+                        if (!soundEnabled)
+                            break;
+                        wavTimer = (wavTimer & 0x700) | value;
+                        wavFreq = (2048 - wavTimer) * 2;
+                        break;
+                    case 0xFF1E://NR34 - Channel 3 Frequency's higher data (R/W)
+                        if (!soundEnabled)
+                            break;
+                        wavReset = (value & 0x80) != 0;
+                        wavLoop = (value & 0x40) == 0;
+                        wavTimer = (wavTimer & 0x0FF) | ((value & 7) << 8);
+                        wavFreq = (2048 - wavTimer) * 2;
+                        break;
+                    case 0xFF20://NR41 - Channel 4 Sound Length (R/W)
+                        if (!soundEnabled)
+                            break;
+                        noiseLength = 64 - (value & 0x3F);
+                        break;
+                    case 0xFF21://NR42 - Channel 4 Volume Envelope (R/W)
+                        if (!soundEnabled)
+                            break;
+                        noiseVolume = (value >> 4) & 0xF;
+                        noiseEnvelopeDirection = (value & 0x8) != 0;
+                        noiseEnvelopeFreq = value & 7;
+                        noiseEnvelopeEnabled = (value & 7) != 0;
+                        break;
+                    case 0xFF22://NR43 - Channel 4 Polynomial Counter (R/W)
+                        if (!soundEnabled)
+                            break;
+                        noiseShiftFreq = noiseDivisors[value & 7] << (value >> 4);
+                        noiseShiftWidth = (value & 0x8) == 0;
+                        break;
+                    case 0xFF23://NR44 - Channel 4 Counter/consecutive; Inital (R/W)
+                        if (!soundEnabled)
+                            break;
+                        noiseReset = (value & 0x80) != 0;
+                        noiseLoop = (value & 0x40) == 0;
+                        break;
+                    case 0xFF25: //NR51 - Selection of Sound output terminal (R/W)
+                        if (!soundEnabled)
+                            break;
+                        noiseLeft = (value & 0x80) != 0;
+                        wavLeft = (value & 0x40) != 0;
+                        square2Left = (value & 0x20) != 0;
+                        square1Left = (value & 0x10) != 0;
+                        noiseRight = (value & 0x08) != 0;
+                        wavRight = (value & 0x04) != 0;
+                        square2Right = (value & 0x02) != 0;
+                        square1Right = (value & 0x01) != 0;
+                        break;
+                    case 0xFF26: //NR52 - Sound on/off
+                        soundEnabled = (value & 0x80) != 0;
+                        if (!soundEnabled)
+                            ResetSound();
+                        break;
                     case 0xFF40://LCDC - LCD Control (R/W)
                         LCDC = (byte)(value & 0xFF);
+                        if ((LCDC & 0x80) == 0)
+                        {
+                            InterVBlank = false;
+                            InterSTATCoincidence = false;
+                            InterSTATHBlank = false;
+                            InterSTATOAM = false;
+                            InterSTATVBlank = false;
+                        }
                         break;
                     case 0xFF41://STAT - LCDC Status (R/W)
+                        if ((LCDC & 0x80) == 0)
+                            return;
                         InterSTATHBlankEnabled = (value & 0x08) != 0;
                         InterSTATVBlankEnabled = (value & 0x10) != 0;
                         InterSTATOAMEnabled = (value & 0x20) != 0;
@@ -2366,6 +2598,29 @@ namespace gb_o_tron
                     }
                 }
             }
+        }
+        private void ResetSound()
+        {
+            Write(0, 0xFF10);
+            Write(0, 0xFF11);
+            Write(0, 0xFF12);
+            Write(0, 0xFF13);
+            Write(0, 0xFF14);
+            Write(0, 0xFF16);
+            Write(0, 0xFF17);
+            Write(0, 0xFF18);
+            Write(0, 0xFF19);
+            Write(0, 0xFF1A);
+            Write(0, 0xFF1B);
+            Write(0, 0xFF1C);
+            Write(0, 0xFF1D);
+            Write(0, 0xFF1E);
+            Write(0, 0xFF20);
+            Write(0, 0xFF21);
+            Write(0, 0xFF22);
+            Write(0, 0xFF23);
+            Write(0, 0xFF24);
+            Write(0, 0xFF25);
         }
         #region Instructions
         private int JR(int n, int reg1)

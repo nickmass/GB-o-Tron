@@ -17,7 +17,11 @@ namespace gb_o_tron
         bool closing;
         GBCore gb;
         Thread game;
-        Bitmap screen = new Bitmap(512, 448);
+        Bitmap border = new Bitmap(512, 448);
+        Bitmap screen = new Bitmap(320, 288);
+        Bitmap defaultBorder;
+        private BufferedGraphics renderGfx;
+        private BufferedGraphicsContext bufferContex;
         Graphics screenGfx;
         int frame;
         int frames;
@@ -32,6 +36,7 @@ namespace gb_o_tron
         string savFile;
         bool paused;
         int frameskip = 1;
+        bool noBorder = true;
 
         SaveState[] saveBuffer;
         int saveBufferCounter = 0;
@@ -42,6 +47,9 @@ namespace gb_o_tron
         bool rewinding = false;
         bool rewindingEnabled = true;
 
+        WAVOutput wavOut;
+        ALAudio audio;
+
         public Form1(string file)
         {
             InitializeComponent();
@@ -50,6 +58,16 @@ namespace gb_o_tron
             appPath = Path.GetDirectoryName(Application.ExecutablePath);
             if (File.Exists(file))
                 OpenFile(file);
+            bufferContex = BufferedGraphicsManager.Current;
+            bufferContex.MaximumBuffer = panel1.Size;
+            renderGfx = bufferContex.Allocate(panel1.CreateGraphics(), new Rectangle(0, 0, panel1.Width, panel1.Height));
+            renderGfx.Graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+            System.Reflection.Assembly thisExe;
+            thisExe = System.Reflection.Assembly.GetExecutingAssembly();
+            Stream bitmapFile = thisExe.GetManifestResourceStream("gb_o_tron.default.png");
+            defaultBorder = (Bitmap)Bitmap.FromStream(bitmapFile);
+            bitmapFile.Close();
+            wavOut = new WAVOutput("test.wav", 44100);
         }
         public unsafe void play()
         {
@@ -109,41 +127,51 @@ namespace gb_o_tron
                         }
                     }
                     gb.Run(player);
+                    //wavOut.AddSamples(gb.audio.output, gb.audio.outputPTR / 2);
+                    if (frameskip == 1)
+                        audio.MainLoop(gb.audio.outputPTR, false);
                     if (frame % frameskip == 0)
                     {
-                        BitmapData bmd = screen.LockBits(new Rectangle(0, 0, 512, 448), ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+                        BitmapData bmd = screen.LockBits(new Rectangle(0, 0, 320, 288), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
                         uint* pixels = (uint*)bmd.Scan0;
                         if (gb.rom.sgbMode)
                         {
+                            if (noBorder)
+                                renderGfx.Graphics.DrawImage(defaultBorder, 0, 0, 512, 448);
                             for (int imgY = 0; imgY < 288; imgY++)
                                 for (int imgX = 0; imgX < 320; imgX++)
-                                    pixels[((imgY + 80) * 512) + (imgX + 96)] = gb.sgb.screen[(imgY / 2), (imgX / 2)];
+                                    pixels[((imgY) * 320) + (imgX)] = gb.sgb.screen[(imgY / 2), (imgX / 2)];
                             screen.UnlockBits(bmd);
-                            screenGfx.DrawImage(screen, new Point(0, 0));
+                            renderGfx.Graphics.DrawImageUnscaled(screen, new Point(96, 80));
                             if (gb.sgb.newBorder)
                             {
-                                bmd = screen.LockBits(new Rectangle(0, 0, 512, 448), ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+                                bmd = border.LockBits(new Rectangle(0, 0, 512, 448), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
                                 pixels = (uint*)bmd.Scan0;
                                 for (int imgY = 0; imgY < 448; imgY++)
                                     for (int imgX = 0; imgX < 512; imgX++)
                                         pixels[(imgY * 512) + imgX] = gb.sgb.border[(imgY / 2), (imgX / 2)];
-                                screen.UnlockBits(bmd);
-                                screenGfx.DrawImage(screen, new Point(0, 0));
+                                border.UnlockBits(bmd);
                                 gb.sgb.newBorder = false;
+                                noBorder = false;
                             }
+                            if (!noBorder)
+                                renderGfx.Graphics.DrawImageUnscaled(border, new Point(0, 0));
                         }
                         else
                         {
+                            renderGfx.Graphics.DrawImage(defaultBorder, 0, 0, 512, 448);
                             for (int imgY = 0; imgY < 288; imgY++)
                                 for (int imgX = 0; imgX < 320; imgX++)
-                                    pixels[((imgY + 80) * 512) + (imgX + 96)] = gb.lcd.screen[(imgY / 2), (imgX / 2)];
+                                    pixels[((imgY) * 320) + (imgX)] = gb.lcd.screen[(imgY / 2), (imgX / 2)];
                             screen.UnlockBits(bmd);
-                            screenGfx.DrawImage(screen, new Point(0, 0));
+                            renderGfx.Graphics.DrawImageUnscaled(screen, new Point(96, 80));
                         }
+                        renderGfx.Render();
                     }
                 }
-                if(frameskip == 1)
-                    Thread.Sleep(sleep);
+                if (frameskip == 1)
+                    audio.SyncToAudio();
+                    //Thread.Sleep(sleep);
             }
         }
         private void UpdateFramerate()
@@ -158,6 +186,7 @@ namespace gb_o_tron
         }
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
+            wavOut.CompleteRecording();
             if (gb != null)
             {
                 closing = true;
@@ -166,6 +195,11 @@ namespace gb_o_tron
                     game.Abort();
                 if (gb.rom.battery)
                     File.WriteAllBytes(savFile, gb.GetRam());
+                if (audio != null)
+                {
+                    audio.Destroy();
+                    audio = null;
+                }
             }
         }
         private void openToolStripMenuItem_Click(object sender, EventArgs e)
@@ -184,13 +218,22 @@ namespace gb_o_tron
                 game.Abort();
             if (gb != null && gb.rom.battery)
                 File.WriteAllBytes(savFile, gb.GetRam());
+            if (audio != null)
+            {
+                audio.Destroy();
+                audio = null;
+            }
             gb = new GBCore(File.OpenRead(file), systemType);
+            noBorder = true;
             savFile = Path.Combine(appPath, "sav\\" + Path.GetFileName(file) + ".sav");
             if (gb.rom.battery && File.Exists(savFile))
                 gb.SetRam(File.ReadAllBytes(savFile));
             game = new Thread(new ThreadStart(play));
             closing = false;
             saveBuffer = new SaveState[(60 / saveBufferFreq) * saveBufferSeconds];
+
+            audio = new ALAudio(44100, gb.audio.output, 0.05f);
+            audio.Create();
             game.Start();
         }
         private void exitToolStripMenuItem_Click(object sender, EventArgs e)

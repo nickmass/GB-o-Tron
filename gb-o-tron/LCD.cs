@@ -117,7 +117,7 @@ namespace gb_o_tron
                         windowTileMap = 0x9C00;
                     else
                         windowTileMap = 0x9800;
-                    int yScroll = (scanline - gb.WY);
+                    int yScroll = scanline - gb.WY;
                     int xScroll = gb.WX - 7;
                     if (yScroll < 144 && yScroll >= 0 && xScroll < 160)
                     {
